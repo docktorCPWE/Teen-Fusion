@@ -21,6 +21,7 @@ const state = {
   view: "grid",
   detailOpen: false,
   studentModalOpen: false,
+  editingStudentId: "",
   resourceModalOpen: false,
   editingResourceId: "",
   scheduleStart: "",
@@ -46,6 +47,7 @@ const icons = {
   light: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   question: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.2 9a3.1 3.1 0 1 1 5.4 2.1c-.9.8-2.1 1.4-2.1 3.1" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M12 18.5h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>`,
   notes: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h9l3 3v13H6V4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15 4v4h4M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 16.8-.8 4 4-.8L18.6 8.6 15.4 5.4 4 16.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m14.5 6.3 3.2 3.2M12 20h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   chevronLeft: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   chevronRight: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
@@ -388,31 +390,34 @@ function renderGroupPage() {
 function renderStudentModal() {
   if (!state.studentModalOpen) return "";
 
+  const student = editingStudent();
+  const isEditing = Boolean(student);
+
   return `
     <div class="modal-backdrop" data-action="close-student-modal">
       <section class="student-modal" role="dialog" aria-modal="true" aria-labelledby="student-modal-title">
-        <button class="detail-close modal-close" data-action="close-student-modal" aria-label="Close add student form">${icons.x}</button>
+        <button class="detail-close modal-close" data-action="close-student-modal" aria-label="Close student form">${icons.x}</button>
         <form class="student-form" id="student-form">
           <div class="form-heading">
-            <span class="section-label">Student Entry</span>
-            <h2 id="student-modal-title">Add Student</h2>
+            <span class="section-label">${isEditing ? "Student Update" : "Student Entry"}</span>
+            <h2 id="student-modal-title">${isEditing ? "Edit Student" : "Add Student"}</h2>
           </div>
           <div class="form-grid">
-            ${formField("firstName", "First Name", "text", "Jordan", true)}
-            ${formField("lastName", "Last Name", "text", "Taylor", true)}
-            ${formField("phone", "Student Phone", "tel", "(555) 123-4567")}
-            ${formField("emergencyName", "Emergency Contact", "text", "Parent or guardian", true)}
-            ${formField("emergencyPhone", "Emergency Phone", "tel", "(555) 987-6543", true)}
+            ${formField("firstName", "First Name", "text", "Jordan", true, student?.firstName || "")}
+            ${formField("lastName", "Last Name", "text", "Taylor", true, student?.lastName || "")}
+            ${formField("phone", "Student Phone", "tel", "(555) 123-4567", false, student?.phone || "")}
+            ${formField("emergencyName", "Emergency Contact", "text", "Parent or guardian", true, student?.emergencyName || "")}
+            ${formField("emergencyPhone", "Emergency Phone", "tel", "(555) 987-6543", true, student?.emergencyPhone || "")}
             <label class="field field-wide">
               <span>Address</span>
-              <textarea name="address" rows="3" placeholder="Street, city, state, ZIP"></textarea>
+              <textarea name="address" rows="3" placeholder="Street, city, state, ZIP">${escapeHtml(student?.address || "")}</textarea>
             </label>
             <label class="field field-wide">
-              <span>Pertinent Information</span>
-              <textarea name="notes" rows="4" placeholder="Medical conditions, allergies, pickup notes, or pastoral care context"></textarea>
+              <span>Student History & Pertinent Information</span>
+              <textarea name="notes" rows="4" placeholder="Medical conditions, allergies, pickup notes, student history, or pastoral care context">${escapeHtml(student?.notes || "")}</textarea>
             </label>
           </div>
-          <button class="primary-button" type="submit">${icons.check} Save Student</button>
+          <button class="primary-button" type="submit">${icons.check} ${isEditing ? "Save Changes" : "Save Student"}</button>
         </form>
       </section>
     </div>
@@ -480,8 +485,10 @@ function renderStudentDetail() {
       ${studentDetailSection("Address", student.address || "No address listed.")}
       ${studentDetailSection("Emergency Contact", student.emergencyName || "No emergency contact listed.")}
       ${studentDetailSection("Emergency Phone", student.emergencyPhone || "No emergency phone listed.")}
-      ${studentDetailSection("Pertinent Information", student.notes || "No medical conditions, allergies, or other notes listed.")}
+      ${studentDetailSection("Student History & Pertinent Information", student.notes || "No medical conditions, allergies, student history, or other notes listed.")}
+      ${studentDetailSection(student.updatedAt ? "Updated" : "Saved", formatResourceDate(student.updatedAt || student.createdAt))}
       <div class="detail-actions">
+        <button class="ghost-button" data-action="edit-student" data-student-id="${student.id}">${icons.edit} Edit Student</button>
         <button class="ghost-button danger-action" data-action="delete-student" data-student-id="${student.id}">Remove Student</button>
       </div>
     </aside>
@@ -952,6 +959,7 @@ function bindEvents() {
       state.activeView = button.dataset.view;
       state.detailOpen = false;
       state.studentModalOpen = false;
+      state.editingStudentId = "";
       state.resourceModalOpen = false;
       state.editingResourceId = "";
       render();
@@ -990,6 +998,7 @@ function bindEvents() {
   });
 
   document.querySelector("[data-action='open-student-modal']")?.addEventListener("click", () => {
+    state.editingStudentId = "";
     state.studentModalOpen = true;
     render();
   });
@@ -998,6 +1007,7 @@ function bindEvents() {
     control.addEventListener("click", (event) => {
       if (event.currentTarget !== event.target && event.currentTarget.classList.contains("modal-backdrop")) return;
       state.studentModalOpen = false;
+      state.editingStudentId = "";
       render();
     });
   });
@@ -1030,7 +1040,6 @@ function bindEvents() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const student = {
-      id: `student-${Date.now()}`,
       firstName: String(data.get("firstName") || "").trim(),
       lastName: String(data.get("lastName") || "").trim(),
       address: String(data.get("address") || "").trim(),
@@ -1038,13 +1047,28 @@ function bindEvents() {
       emergencyName: String(data.get("emergencyName") || "").trim(),
       emergencyPhone: String(data.get("emergencyPhone") || "").trim(),
       notes: String(data.get("notes") || "").trim(),
-      createdAt: new Date().toISOString(),
     };
     if (!student.firstName || !student.lastName) return;
-    state.students = [student, ...state.students];
-    state.selectedStudentId = student.id;
+    if (state.editingStudentId) {
+      const updatedAt = new Date().toISOString();
+      state.students = state.students.map((entry) => (
+        entry.id === state.editingStudentId
+          ? { ...entry, ...student, updatedAt }
+          : entry
+      ));
+      state.selectedStudentId = state.editingStudentId;
+    } else {
+      const newStudent = {
+        id: `student-${Date.now()}`,
+        ...student,
+        createdAt: new Date().toISOString(),
+      };
+      state.students = [newStudent, ...state.students];
+      state.selectedStudentId = newStudent.id;
+    }
     state.detailOpen = true;
     state.studentModalOpen = false;
+    state.editingStudentId = "";
     saveStudents();
     form.reset();
     render();
@@ -1072,7 +1096,15 @@ function bindEvents() {
     if (!confirm(`Remove ${studentName(student)} from My Group?`)) return;
     state.students = state.students.filter((entry) => entry.id !== event.currentTarget.dataset.studentId);
     state.selectedStudentId = state.students[0]?.id || "";
+    state.editingStudentId = "";
     saveStudents();
+    render();
+  });
+
+  document.querySelector("[data-action='edit-student']")?.addEventListener("click", (event) => {
+    state.selectedStudentId = event.currentTarget.dataset.studentId;
+    state.editingStudentId = event.currentTarget.dataset.studentId;
+    state.studentModalOpen = true;
     render();
   });
 
@@ -1184,6 +1216,7 @@ function bindEvents() {
 function closeStudentModalOnEscape(event) {
   if (event.key !== "Escape") return;
   state.studentModalOpen = false;
+  state.editingStudentId = "";
   render();
 }
 
@@ -1293,6 +1326,10 @@ function saveResources() {
 
 function selectedStudent() {
   return state.students.find((student) => student.id === state.selectedStudentId) || state.students[0];
+}
+
+function editingStudent() {
+  return state.students.find((student) => student.id === state.editingStudentId) || null;
 }
 
 function selectedResource() {
