@@ -827,7 +827,7 @@ function renderDetail(lesson) {
         <span class="tagline">${escapeHtml(lesson.tagline)}</span>
       </div>
 
-      ${detailSection("light", "Big Idea", lesson.bigIdea)}
+      ${renderBigIdeaSection(lesson)}
       ${detailSection("notes", "Creative Hook", lesson.hook)}
       <section class="detail-section">
         <h3>${icons.question} Discussion Questions</h3>
@@ -847,6 +847,19 @@ function renderDetail(lesson) {
   `;
 }
 
+function renderBigIdeaSection(lesson) {
+  const context = lessonContextParagraphs(lesson);
+  return `
+    <section class="detail-section big-idea-section">
+      <h3>${icons.light} Big Idea</h3>
+      <p class="idea-statement">${escapeHtml(lesson.bigIdea || "Not listed in the curriculum file.")}</p>
+      <div class="idea-context">
+        ${context.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function detailSection(icon, title, body) {
   return `
     <section class="detail-section">
@@ -854,6 +867,103 @@ function detailSection(icon, title, body) {
       <p>${escapeHtml(body || "Not listed in the curriculum file.")}</p>
     </section>
   `;
+}
+
+function lessonContextParagraphs(lesson) {
+  const lens = lessonContextLens(lesson);
+  const focus = lesson.moduleFocus ? ` This fits the broader module focus: ${lesson.moduleFocus.replace(/\.$/, "")}.` : "";
+  const title = lesson.title || `Week ${lesson.week}`;
+  return [
+    `${title} gives the teacher a way to name a real pressure students are already carrying: ${lens.pressure}. Start by letting them describe where they see this tension in normal life before trying to correct it. That makes the conversation feel connected to their world instead of like a lecture dropped on top of it.${focus}`,
+    `The goal is to move from surface behavior into the belief underneath it. ${lens.pastoralGoal} Students may nod along with the right answer quickly, so slow the room down and ask what this topic reveals about trust, identity, fear, desire, community, or obedience.`,
+    `Before opening the scripture references, invite students to listen for what God reveals about Himself and what He says is true about them. The passage is not just a proof text for the topic; it is a lens for ${lens.response}. Give them one concrete next step they can practice this week, even if that step is small, quiet, or private.`,
+  ];
+}
+
+function lessonContextLens(lesson) {
+  const text = `${lesson.title} ${lesson.bigIdea} ${lesson.tagline} ${lesson.moduleTitle}`.toLowerCase();
+
+  if (matchesAny(text, ["algorithm", "filter", "comparison", "comments", "digital", "deepfakes", "ai-generated", "pornography", "cancel"])) {
+    return {
+      pressure: "digital spaces constantly measure worth through attention, image, speed, and reaction",
+      pastoralGoal: "Help students separate who God says they are from what screens, comments, labels, and private habits tell them they are.",
+      response: "discerning truth, practicing integrity online, and choosing freedom over performance",
+    };
+  }
+
+  if (matchesAny(text, ["anxiety", "depression", "anger", "shame", "storms", "peace"])) {
+    return {
+      pressure: "emotions can feel overwhelming, isolating, or impossible to explain out loud",
+      pastoralGoal: "Give students language for their inner life while showing them that Jesus meets them with both compassion and direction.",
+      response: "bringing hidden burdens into God's presence and responding with honesty instead of panic or isolation",
+    };
+  }
+
+  if (matchesAny(text, ["friends", "dating", "family", "forgiveness", "outsider", "marginalized", "inclusive"])) {
+    return {
+      pressure: "relationships shape belonging, self-worth, boundaries, loyalty, and wounds more deeply than students often realize",
+      pastoralGoal: "Help the group think beyond popularity or drama and toward relationships that reflect the patience, truth, and grace of Jesus.",
+      response: "loving people with wisdom, setting healthy boundaries, and practicing restoration where it is possible",
+    };
+  }
+
+  if (matchesAny(text, ["suffering", "science", "only way", "bible reliable", "doubt", "resurrection", "faith and science"])) {
+    return {
+      pressure: "students are trying to decide whether faith can stand up to hard questions, pain, evidence, and competing voices",
+      pastoralGoal: "Create a room where honest questions are welcomed and where faith is presented as thoughtful trust, not blind denial.",
+      response: "seeking truth with courage and letting Jesus become the center of their questions, not the thing they avoid",
+    };
+  }
+
+  if (matchesAny(text, ["soap", "prayer", "worship", "fasting", "mentor", "bible"])) {
+    return {
+      pressure: "spiritual habits can feel confusing, boring, performative, or reserved for people who seem more mature",
+      pastoralGoal: "Make discipleship feel practical and accessible by showing students how ordinary rhythms can open space for God to shape them.",
+      response: "practicing faith in repeatable ways that are honest, sustainable, and rooted in relationship with God",
+    };
+  }
+
+  if (matchesAny(text, ["moses", "peter", "esther", "gideon", "david", "least of these", "hidden service", "failure"])) {
+    return {
+      pressure: "students often assume their limits, mistakes, fear, or lack of visibility disqualify them from being used by God",
+      pastoralGoal: "Point out that Scripture repeatedly shows God forming people over time and using ordinary obedience in meaningful ways.",
+      response: "seeing calling through God's strength instead of personal perfection, popularity, or past failure",
+    };
+  }
+
+  if (matchesAny(text, ["boundaries", "substances", "integrity", "envy", "gossip", "jealousy"])) {
+    return {
+      pressure: "temptation often arrives through pressure, escape, secrecy, comparison, or the desire to belong",
+      pastoralGoal: "Move the conversation past rule-keeping and toward the heart-level freedom God wants for them.",
+      response: "choosing wise boundaries before pressure hits and letting obedience become an act of trust",
+    };
+  }
+
+  if (matchesAny(text, ["future", "sharing your faith", "justice", "stewardship", "global", "mission"])) {
+    return {
+      pressure: "students want their lives to matter but may not know how ordinary choices connect to God's larger mission",
+      pastoralGoal: "Help them see purpose as something lived today, not something postponed until adulthood or a perfect plan appears.",
+      response: "joining God's work through faithfulness, generosity, service, and a willingness to speak about hope",
+    };
+  }
+
+  if (matchesAny(text, ["holy", "sin", "salvation", "holy spirit", "christmas", "doctrine"])) {
+    return {
+      pressure: "core beliefs can sound abstract until students see how they explain the deepest parts of guilt, hope, rescue, and worship",
+      pastoralGoal: "Translate doctrine into lived reality so students understand not only what Christians believe but why it changes everything.",
+      response: "receiving God's rescue with humility and responding to His character with awe, trust, and surrender",
+    };
+  }
+
+  return {
+    pressure: "the topic touches identity, choices, faith, and the way students interpret their everyday world",
+    pastoralGoal: "Connect the teaching to real questions students are asking beneath the surface.",
+    response: "letting God's truth shape their next decision, conversation, and private thought life",
+  };
+}
+
+function matchesAny(text, terms) {
+  return terms.some((term) => text.includes(term));
 }
 
 function renderScriptureLinks(scripture, className) {

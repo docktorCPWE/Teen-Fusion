@@ -838,6 +838,22 @@ button {
   margin: 0;
 }
 
+.big-idea-section {
+  gap: 12px;
+}
+
+.idea-statement {
+  color: #f4f7ff;
+  font-weight: 720;
+}
+
+.idea-context {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0 0 15px;
+  border-left: 2px solid rgba(246, 181, 48, 0.42);
+}
+
 .detail-section ol {
   display: grid;
   gap: 9px;
