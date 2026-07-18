@@ -48,6 +48,7 @@ const icons = {
   question: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.2 9a3.1 3.1 0 1 1 5.4 2.1c-.9.8-2.1 1.4-2.1 3.1" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M12 18.5h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>`,
   notes: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h9l3 3v13H6V4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15 4v4h4M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   edit: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 16.8-.8 4 4-.8L18.6 8.6 15.4 5.4 4 16.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m14.5 6.3 3.2 3.2M12 20h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V15" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>`,
   chevronLeft: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   chevronRight: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
@@ -774,6 +775,7 @@ function renderFeatured(lesson) {
           ${icons.check} ${state.taught.has(lesson.week) ? "Mark Available" : "Mark as Taught"}
         </button>
         <button class="ghost-button" data-action="open-detail">${icons.notes} View Notes</button>
+        <button class="ghost-button" data-action="download-presentation" data-week="${lesson.week}">${icons.download} Download Slides</button>
       </div>
     </section>
   `;
@@ -841,6 +843,7 @@ function renderDetail(lesson) {
         <button class="primary-button" data-action="toggle-taught" data-week="${lesson.week}">
           ${icons.check} ${state.taught.has(lesson.week) ? `Mark Week ${lesson.week} Available` : `Mark Week ${lesson.week} as Taught`}
         </button>
+        <button class="ghost-button" data-action="download-presentation" data-week="${lesson.week}">${icons.download} Download Presentation</button>
         <button class="ghost-button" data-action="next-available">Jump to Next Available</button>
       </div>
     </aside>
@@ -966,6 +969,480 @@ function matchesAny(text, terms) {
   return terms.some((term) => text.includes(term));
 }
 
+async function downloadLessonPresentation(lesson) {
+  const imageBytes = await renderLessonImageAsPng(lesson).catch(() => null);
+  const files = buildPresentationFiles(lesson, imageBytes);
+  const blob = new Blob([createZip(files)], {
+    type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${safeFilename(`Week ${lesson.week} ${lesson.title}`)}.pptx`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function renderLessonImageAsPng(lesson) {
+  const response = await fetch(lessonImageSrc(lesson));
+  if (!response.ok) throw new Error("Lesson image could not be loaded.");
+  const svg = await response.text();
+  const image = await loadImageFromBlob(new Blob([svg], { type: "image/svg+xml" }));
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 900;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas is unavailable.");
+  context.fillStyle = "#050712";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.95));
+  if (!blob) throw new Error("Canvas export failed.");
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+function loadImageFromBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Image render failed."));
+    };
+    image.src = url;
+  });
+}
+
+function buildPresentationFiles(lesson, imageBytes) {
+  const lens = lessonContextLens(lesson);
+  const palette = presentationPalette(lesson);
+  const scriptures = splitScriptureReferences(lesson.scripture);
+  const contextSlides = [
+    `Students are carrying this pressure: ${lens.pressure}.`,
+    lens.pastoralGoal,
+    "Ask what this topic reveals about trust, identity, fear, desire, community, or obedience.",
+  ];
+  const responseSlides = [
+    "Listen for what God reveals about Himself and what He says is true about us.",
+    `This week, practice ${lens.response}.`,
+  ];
+  const slideSpecs = [
+    {
+      title: lesson.title,
+      kicker: `Week ${lesson.week}`,
+      subtitle: lesson.tagline,
+      body: [scriptures.join("; ")],
+      layout: "title",
+      image: Boolean(imageBytes),
+    },
+    {
+      title: "The central idea",
+      body: [lesson.bigIdea],
+      layout: "statement",
+    },
+    {
+      title: "The pressure students feel",
+      body: contextSlides,
+      layout: "context",
+    },
+    {
+      title: "Open the Scriptures",
+      body: scriptures.length
+        ? scriptures.map((reference) => `${reference} (${NLT_VERSION})`)
+        : ["Scripture references are listed in the lesson notes."],
+      footer: "Read for what God reveals about Himself and what He says is true about us.",
+      layout: "scripture",
+    },
+    {
+      title: "Start the conversation",
+      body: [lesson.hook || "Use the creative hook from the lesson notes to help students enter the topic."],
+      layout: "hook",
+    },
+    {
+      title: "Questions for the room",
+      body: lesson.questions.length ? lesson.questions.slice(0, 3) : ["What stands out to you from this topic?", "Where do you see this in real life?", "What could obedience look like this week?"],
+      layout: "questions",
+    },
+    {
+      title: "This week, practice the truth",
+      body: responseSlides,
+      footer: "Choose one small, honest next step before you leave.",
+      layout: "response",
+    },
+  ];
+
+  const files = [
+    { path: "[Content_Types].xml", data: contentTypesXml(slideSpecs.length, Boolean(imageBytes)) },
+    { path: "_rels/.rels", data: rootRelsXml() },
+    { path: "docProps/app.xml", data: appPropsXml(slideSpecs.length) },
+    { path: "docProps/core.xml", data: corePropsXml(lesson) },
+    { path: "ppt/presentation.xml", data: presentationXml(slideSpecs.length) },
+    { path: "ppt/_rels/presentation.xml.rels", data: presentationRelsXml(slideSpecs.length) },
+    { path: "ppt/theme/theme1.xml", data: themeXml() },
+    { path: "ppt/slideMasters/slideMaster1.xml", data: slideMasterXml() },
+    { path: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: slideMasterRelsXml() },
+    { path: "ppt/slideLayouts/slideLayout1.xml", data: slideLayoutXml() },
+    { path: "ppt/slideLayouts/_rels/slideLayout1.xml.rels", data: slideLayoutRelsXml() },
+  ];
+
+  slideSpecs.forEach((spec, index) => {
+    const slideNumber = index + 1;
+    files.push({
+      path: `ppt/slides/slide${slideNumber}.xml`,
+      data: slideXml(spec, slideNumber, palette),
+    });
+    files.push({
+      path: `ppt/slides/_rels/slide${slideNumber}.xml.rels`,
+      data: slideRelsXml(spec.image && imageBytes),
+    });
+  });
+
+  if (imageBytes) files.push({ path: "ppt/media/lesson.png", data: imageBytes });
+  return files;
+}
+
+function slideXml(spec, slideNumber, palette) {
+  const elements = [];
+  const add = (xml) => elements.push(xml);
+  const accent = slideNumber % 2 ? palette.primary : palette.accent;
+  add(rectShape(2, 0, 0, 13.333, 7.5, palette.background));
+  add(rectShape(3, 0, 0, 13.333, 0.16, accent));
+  add(rectShape(4, 0.55, 6.94, 12.25, 0.04, accent, 42000));
+
+  if (spec.layout === "title") {
+    if (spec.image) {
+      add(picture(5, 6.35, 0.42, 6.45, 3.65));
+      add(rectShape(6, 6.1, 0.42, 0.15, 3.65, accent, 65000));
+    } else {
+      add(rectShape(5, 6.35, 0.62, 5.9, 3.25, palette.panel, 78000));
+    }
+    add(textBox(7, spec.kicker, 0.72, 0.72, 3.2, 0.42, 18, palette.primary, true));
+    add(textBox(8, spec.title, 0.72, 1.18, 5.55, 1.78, 42, "FFFFFF", true));
+    add(textBox(9, spec.subtitle || "", 0.72, 3.08, 5.55, 0.58, 22, palette.gold, true));
+    add(textBox(10, spec.body, 0.72, 4.1, 5.85, 0.68, 20, "9FC7FF", true));
+    add(textBox(11, "Teen Fusion Youth Curriculum", 0.72, 6.25, 4.4, 0.36, 15, "D7DCEB", false));
+  } else if (spec.layout === "statement") {
+    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
+    add(rectShape(6, 0.78, 1.7, 11.75, 3.55, palette.panel, 82000));
+    add(textBox(7, spec.body, 1.12, 2.05, 10.9, 2.5, 30, "FFFFFF", true));
+    add(textBox(8, "Let this become the bridge into the Scripture, not a substitute for it.", 1.12, 5.65, 10.7, 0.46, 18, "D7DCEB", false));
+  } else if (spec.layout === "scripture") {
+    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
+    add(textBox(6, spec.body.map((line) => `• ${line}`), 1.03, 1.85, 11.2, 2.25, 27, "9FC7FF", true));
+    add(rectShape(7, 0.92, 4.55, 11.45, 1.1, palette.panel, 78000));
+    add(textBox(8, spec.footer, 1.16, 4.86, 10.95, 0.5, 19, "FFFFFF", false));
+  } else if (spec.layout === "questions") {
+    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
+    add(textBox(6, spec.body.map((question, index) => `${index + 1}. ${shorten(question, 118)}`), 0.95, 1.75, 11.35, 4.25, 24, "FFFFFF", false));
+  } else {
+    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
+    add(rectShape(6, 0.92, 1.65, 11.5, 4.12, palette.panel, 82000));
+    add(textBox(7, spec.body.map((line) => shorten(line, 230)), 1.2, 1.98, 10.9, 3.25, 19, "FFFFFF", false));
+    if (spec.footer) add(textBox(8, spec.footer, 1.2, 5.98, 10.8, 0.42, 18, palette.gold, true));
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      ${elements.join("\n      ")}
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`;
+}
+
+function presentationPalette(lesson) {
+  const text = `${lesson.assetPrompt} ${lesson.title} ${lesson.moduleTitle}`.toLowerCase();
+  if (matchesAny(text, ["water", "storm", "deep", "ocean"])) {
+    return { background: "04111E", panel: "0D2634", primary: "4CC9F0", accent: "F6B530", gold: "FFD663" };
+  }
+  if (matchesAny(text, ["fire", "flame", "anger"])) {
+    return { background: "130708", panel: "271011", primary: "F97316", accent: "FFD663", gold: "FFD663" };
+  }
+  if (matchesAny(text, ["digital", "phone", "ai", "algorithm", "screen", "neon"])) {
+    return { background: "050712", panel: "10172A", primary: "60A5FA", accent: "E331D4", gold: "FFD663" };
+  }
+  if (matchesAny(text, ["crown", "king", "royal", "home"])) {
+    return { background: "090815", panel: "19172A", primary: "F6B530", accent: "8B5CF6", gold: "FFD663" };
+  }
+  if (matchesAny(text, ["cross", "holy", "grace", "sin", "christmas"])) {
+    return { background: "070A12", panel: "151923", primary: "F6B530", accent: "60A5FA", gold: "FFD663" };
+  }
+  return { background: "060915", panel: "111827", primary: stripHex(lesson.primary) || "60A5FA", accent: stripHex(lesson.accent) || "F6B530", gold: "FFD663" };
+}
+
+function textBox(id, content, x, y, w, h, fontSize, color, bold = false) {
+  const paragraphs = (Array.isArray(content) ? content : [content])
+    .filter((line) => String(line || "").trim())
+    .map((line) => paragraphXml(line, fontSize, color, bold))
+    .join("");
+  return `<p:sp>
+  <p:nvSpPr><p:cNvPr id="${id}" name="Text ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+  <p:spPr><a:xfrm><a:off x="${emu(x)}" y="${emu(y)}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>
+  <p:txBody><a:bodyPr wrap="square" anchor="t"/><a:lstStyle/>${paragraphs}</p:txBody>
+</p:sp>`;
+}
+
+function paragraphXml(text, fontSize, color, bold) {
+  return `<a:p><a:pPr algn="l"/><a:r><a:rPr lang="en-US" sz="${fontSize * 100}"${bold ? ' b="1"' : ""}><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="${bold ? "Aptos Display" : "Aptos"}"/></a:rPr><a:t>${escapeXml(text)}</a:t></a:r></a:p>`;
+}
+
+function rectShape(id, x, y, w, h, color, alpha = 100000) {
+  return `<p:sp>
+  <p:nvSpPr><p:cNvPr id="${id}" name="Shape ${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+  <p:spPr><a:xfrm><a:off x="${emu(x)}" y="${emu(y)}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"><a:alpha val="${alpha}"/></a:srgbClr></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>
+</p:sp>`;
+}
+
+function picture(id, x, y, w, h) {
+  return `<p:pic>
+  <p:nvPicPr><p:cNvPr id="${id}" name="Lesson artwork"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+  <p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+  <p:spPr><a:xfrm><a:off x="${emu(x)}" y="${emu(y)}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+</p:pic>`;
+}
+
+function contentTypesXml(slideCount, hasImage) {
+  const slides = Array.from({ length: slideCount }, (_, index) => `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  ${hasImage ? '<Default Extension="png" ContentType="image/png"/>' : ""}
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  ${slides}
+</Types>`;
+}
+
+function rootRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+}
+
+function presentationXml(slideCount) {
+  const slides = Array.from({ length: slideCount }, (_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldIdLst>${slides}</p:sldIdLst>
+  <p:sldSz cx="12192000" cy="6858000" type="wide"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+  <p:defaultTextStyle/>
+</p:presentation>`;
+}
+
+function presentationRelsXml(slideCount) {
+  const slides = Array.from({ length: slideCount }, (_, index) => `<Relationship Id="rId${index + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  ${slides}
+</Relationships>`;
+}
+
+function slideRelsXml(hasImage) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  ${hasImage ? '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/lesson.png"/>' : ""}
+</Relationships>`;
+}
+
+function slideMasterXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+  <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
+</p:sldMaster>`;
+}
+
+function slideMasterRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
+</Relationships>`;
+}
+
+function slideLayoutXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
+  <p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`;
+}
+
+function slideLayoutRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`;
+}
+
+function themeXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Teen Fusion">
+  <a:themeElements>
+    <a:clrScheme name="Teen Fusion"><a:dk1><a:srgbClr val="050712"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="111827"/></a:dk2><a:lt2><a:srgbClr val="D7DCEB"/></a:lt2><a:accent1><a:srgbClr val="F6B530"/></a:accent1><a:accent2><a:srgbClr val="60A5FA"/></a:accent2><a:accent3><a:srgbClr val="E331D4"/></a:accent3><a:accent4><a:srgbClr val="22C55E"/></a:accent4><a:accent5><a:srgbClr val="F97316"/></a:accent5><a:accent6><a:srgbClr val="8B5CF6"/></a:accent6><a:hlink><a:srgbClr val="60A5FA"/></a:hlink><a:folHlink><a:srgbClr val="8B5CF6"/></a:folHlink></a:clrScheme>
+    <a:fontScheme name="Teen Fusion"><a:majorFont><a:latin typeface="Aptos Display"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/></a:minorFont></a:fontScheme>
+    <a:fmtScheme name="Teen Fusion"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+  </a:themeElements>
+</a:theme>`;
+}
+
+function appPropsXml(slideCount) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Teen Fusion Dashboard</Application><PresentationFormat>On-screen Show (16:9)</PresentationFormat><Slides>${slideCount}</Slides><Company>Teen Fusion</Company>
+</Properties>`;
+}
+
+function corePropsXml(lesson) {
+  const now = new Date().toISOString();
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(`Week ${lesson.week}: ${lesson.title}`)}</dc:title><dc:creator>Teen Fusion Dashboard</dc:creator><cp:lastModifiedBy>Teen Fusion Dashboard</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
+</cp:coreProperties>`;
+}
+
+function createZip(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  files.forEach((file) => {
+    const pathBytes = encoder.encode(file.path);
+    const data = typeof file.data === "string" ? encoder.encode(file.data) : file.data;
+    const crc = crc32(data);
+    const localHeader = new Uint8Array(30 + pathBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, dosTime(), true);
+    localView.setUint16(12, dosDate(), true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, data.length, true);
+    localView.setUint32(22, data.length, true);
+    localView.setUint16(26, pathBytes.length, true);
+    localHeader.set(pathBytes, 30);
+    localParts.push(localHeader, data);
+
+    const centralHeader = new Uint8Array(46 + pathBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, dosTime(), true);
+    centralView.setUint16(14, dosDate(), true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, data.length, true);
+    centralView.setUint32(24, data.length, true);
+    centralView.setUint16(28, pathBytes.length, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(pathBytes, 46);
+    centralParts.push(centralHeader);
+    offset += localHeader.length + data.length;
+  });
+
+  const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, offset, true);
+  return concatBytes([...localParts, ...centralParts, end]);
+}
+
+function concatBytes(parts) {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let cursor = 0;
+  parts.forEach((part) => {
+    output.set(part, cursor);
+    cursor += part.length;
+  });
+  return output;
+}
+
+function crc32(data) {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const crcTable = Array.from({ length: 256 }, (_, index) => {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  }
+  return crc >>> 0;
+});
+
+function emu(inches) {
+  return Math.round(inches * 914400);
+}
+
+function dosTime() {
+  const now = new Date();
+  return (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+}
+
+function dosDate() {
+  const now = new Date();
+  return ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+}
+
+function stripHex(value) {
+  return String(value || "").replace("#", "").toUpperCase();
+}
+
+function shorten(value, maxLength) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}…`;
+}
+
+function safeFilename(value) {
+  return String(value || "presentation").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase();
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 function renderScriptureLinks(scripture, className) {
   const references = splitScriptureReferences(scripture);
   return `
@@ -1046,6 +1523,25 @@ function bindEvents() {
   document.querySelector("[data-action='next-available']")?.addEventListener("click", () => {
     state.selectedWeek = firstUntaughtWeek() || state.selectedWeek;
     render();
+  });
+
+  document.querySelectorAll("[data-action='download-presentation']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const lesson = state.lessons.find((entry) => entry.week === Number(button.dataset.week));
+      if (!lesson) return;
+      const originalLabel = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = `${icons.download} Building slides...`;
+      try {
+        await downloadLessonPresentation(lesson);
+      } catch (error) {
+        console.error(error);
+        alert("The presentation could not be created. Please try again.");
+      } finally {
+        button.disabled = false;
+        button.innerHTML = originalLabel;
+      }
+    });
   });
 
   document.querySelector("[data-action='reset-progress']")?.addEventListener("click", () => {

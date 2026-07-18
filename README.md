@@ -6,6 +6,7 @@ Teen Fusion is a static master lesson planner and curriculum dashboard for youth
 
 - Dashboard with lesson cards and taught/available status
 - Lesson detail panel with discussion questions and NLT scripture links
+- Per-lesson PowerPoint presentation downloads for Proclaim or slide workflows
 - Content calendar with Sunday lessons and Wednesday carryover entries
 - My Group roster with student contact and emergency details
 - Resources page for saved notes, links, activities, prayer items, and follow-ups
