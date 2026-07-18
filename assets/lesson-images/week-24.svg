@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Week 24: Can I Trust the Bible?</title>
+  <desc id="desc">A stylized vector of an ancient scroll unrolling to reveal a crisp, modern digital waveform structure within the text rows</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05060c"/>
+      <stop offset="48%" stop-color="#090d1b"/>
+      <stop offset="100%" stop-color="#030510"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="18%" cy="20%" r="70%">
+      <stop offset="0%" stop-color="#7F00FF" stop-opacity=".52"/>
+      <stop offset="62%" stop-color="#7F00FF" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#7F00FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="82%" cy="62%" r="68%">
+      <stop offset="0%" stop-color="#E0E0E0" stop-opacity=".5"/>
+      <stop offset="58%" stop-color="#E0E0E0" stop-opacity=".09"/>
+      <stop offset="100%" stop-color="#E0E0E0" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000000" flood-opacity=".55"/>
+    </filter>
+    <pattern id="grid" width="54" height="54" patternUnits="userSpaceOnUse">
+      <path d="M54 0H0V54" fill="none" stroke="#ffffff" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <style>
+      .line{fill:none;stroke:#f7f4ed;stroke-width:18;stroke-linecap:round;stroke-linejoin:round}
+      .thin{fill:none;stroke:#f7f4ed;stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+      .gold{stroke:#7F00FF;fill:none}
+      .blue{stroke:#E0E0E0;fill:none}
+      .fillGold{fill:#7F00FF}
+      .fillBlue{fill:#E0E0E0}
+      .soft{opacity:.24}
+      .label{font:800 24px Inter,system-ui,sans-serif;letter-spacing:8px;fill:#61a0ff}
+      .title{font:900 42px Inter,system-ui,sans-serif;letter-spacing:0;fill:#fff7e7}
+      .micro{font:800 18px Inter,system-ui,sans-serif;letter-spacing:5px;fill:#aeb6c9}
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#warm)"/>
+  <rect width="1280" height="720" fill="url(#cool)"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <path d="M-80 622C210 548 370 664 642 584c245-72 406-264 718-196" fill="none" stroke="#7F00FF" stroke-opacity=".16" stroke-width="72"/>
+  <path d="M-88 650C245 590 428 676 690 608c230-60 380-224 666-170" fill="none" stroke="#E0E0E0" stroke-opacity=".13" stroke-width="44"/>
+  <g filter="url(#softShadow)"><path d="M664 206h360c58 0 86 34 84 84-2 44-32 72-84 72H664c-58 0-86-34-84-84 2-44 32-72 84-72Z" fill="#fff7e7" opacity=".16" stroke="#ffd36a" stroke-width="10"/><path d="M664 362h360c58 0 86 34 84 84-2 44-32 72-84 72H664" fill="none" stroke="#ffd36a" stroke-width="10"/><path d="M676 432c28 0 28-78 56-78s28 118 56 118 28-84 56-84 28 44 56 44 28-108 56-108 28 120 56 120" class="thin blue" filter="url(#glow)"/></g>
+</svg>

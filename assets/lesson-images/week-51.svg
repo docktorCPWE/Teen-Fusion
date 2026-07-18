@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Week 51: The Holy Spirit</title>
+  <desc id="desc">Minimalist blueprint line illustration of a geometric dove silhouette constructed out of clean, glowing white neon light paths</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05060c"/>
+      <stop offset="48%" stop-color="#090d1b"/>
+      <stop offset="100%" stop-color="#030510"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="18%" cy="20%" r="70%">
+      <stop offset="0%" stop-color="#5C768D" stop-opacity=".52"/>
+      <stop offset="62%" stop-color="#5C768D" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#5C768D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="82%" cy="62%" r="68%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".5"/>
+      <stop offset="58%" stop-color="#FFFFFF" stop-opacity=".09"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000000" flood-opacity=".55"/>
+    </filter>
+    <pattern id="grid" width="54" height="54" patternUnits="userSpaceOnUse">
+      <path d="M54 0H0V54" fill="none" stroke="#ffffff" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <style>
+      .line{fill:none;stroke:#f7f4ed;stroke-width:18;stroke-linecap:round;stroke-linejoin:round}
+      .thin{fill:none;stroke:#f7f4ed;stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+      .gold{stroke:#5C768D;fill:none}
+      .blue{stroke:#FFFFFF;fill:none}
+      .fillGold{fill:#5C768D}
+      .fillBlue{fill:#FFFFFF}
+      .soft{opacity:.24}
+      .label{font:800 24px Inter,system-ui,sans-serif;letter-spacing:8px;fill:#61a0ff}
+      .title{font:900 42px Inter,system-ui,sans-serif;letter-spacing:0;fill:#fff7e7}
+      .micro{font:800 18px Inter,system-ui,sans-serif;letter-spacing:5px;fill:#aeb6c9}
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#warm)"/>
+  <rect width="1280" height="720" fill="url(#cool)"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <path d="M-80 622C210 548 370 664 642 584c245-72 406-264 718-196" fill="none" stroke="#5C768D" stroke-opacity=".16" stroke-width="72"/>
+  <path d="M-88 650C245 590 428 676 690 608c230-60 380-224 666-170" fill="none" stroke="#FFFFFF" stroke-opacity=".13" stroke-width="44"/>
+  <g filter="url(#softShadow)"><rect x="632" y="150" width="500" height="390" fill="#2f76ff" opacity=".08" stroke="#61a0ff" stroke-width="6"/><path d="M674 390c122-22 196-90 222-204 32 92 100 152 204 180-80 20-142 12-188-24-10 92-70 146-180 162 40-36 54-74 42-114-32 18-66 18-100 0Z" fill="none" stroke="#f7f4ed" stroke-width="12" filter="url(#glow)"/><path d="M632 240h500M632 330h500M632 420h500M732 150v390M932 150v390" class="thin blue" opacity=".28"/></g>
+</svg>

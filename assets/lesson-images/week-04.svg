@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Week 4: Imposter Syndrome</title>
+  <desc id="desc">A split-screen portrait where one half is a highly stylized theatrical comedy mask, and the other half is a soft, warm, authentic pencil sketch portrait of a smiling teen</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05060c"/>
+      <stop offset="48%" stop-color="#090d1b"/>
+      <stop offset="100%" stop-color="#030510"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="18%" cy="20%" r="70%">
+      <stop offset="0%" stop-color="#0047FF" stop-opacity=".52"/>
+      <stop offset="62%" stop-color="#0047FF" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#0047FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="82%" cy="62%" r="68%">
+      <stop offset="0%" stop-color="#FF00D6" stop-opacity=".5"/>
+      <stop offset="58%" stop-color="#FF00D6" stop-opacity=".09"/>
+      <stop offset="100%" stop-color="#FF00D6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000000" flood-opacity=".55"/>
+    </filter>
+    <pattern id="grid" width="54" height="54" patternUnits="userSpaceOnUse">
+      <path d="M54 0H0V54" fill="none" stroke="#ffffff" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <style>
+      .line{fill:none;stroke:#f7f4ed;stroke-width:18;stroke-linecap:round;stroke-linejoin:round}
+      .thin{fill:none;stroke:#f7f4ed;stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+      .gold{stroke:#0047FF;fill:none}
+      .blue{stroke:#FF00D6;fill:none}
+      .fillGold{fill:#0047FF}
+      .fillBlue{fill:#FF00D6}
+      .soft{opacity:.24}
+      .label{font:800 24px Inter,system-ui,sans-serif;letter-spacing:8px;fill:#61a0ff}
+      .title{font:900 42px Inter,system-ui,sans-serif;letter-spacing:0;fill:#fff7e7}
+      .micro{font:800 18px Inter,system-ui,sans-serif;letter-spacing:5px;fill:#aeb6c9}
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#warm)"/>
+  <rect width="1280" height="720" fill="url(#cool)"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <path d="M-80 622C210 548 370 664 642 584c245-72 406-264 718-196" fill="none" stroke="#0047FF" stroke-opacity=".16" stroke-width="72"/>
+  <path d="M-88 650C245 590 428 676 690 608c230-60 380-224 666-170" fill="none" stroke="#FF00D6" stroke-opacity=".13" stroke-width="44"/>
+  <g filter="url(#softShadow)"><path d="M694 172c118 0 190 72 190 168 0 112-82 174-190 190-88-44-142-102-142-190 0-96 58-168 142-168Z" fill="#f4a51c" opacity=".28" stroke="#ffd36a" stroke-width="10"/><path d="M808 176c122 18 202 82 202 180 0 84-54 142-146 176 22-88 20-250-56-356Z" fill="#f7f4ed" opacity=".12" stroke="#f7f4ed" stroke-width="8"/><path d="M636 336c48-26 104-26 150 0M850 336c42-24 88-22 128 0M740 430c52 34 116 34 170 0" class="thin"/></g>
+</svg>

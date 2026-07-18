@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Week 19: The Art of Forgiveness</title>
+  <desc id="desc">A clenched, aggressive fist slowly opening up to release a cloud of vibrant, drifting crimson autumn leaves</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05060c"/>
+      <stop offset="48%" stop-color="#090d1b"/>
+      <stop offset="100%" stop-color="#030510"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="18%" cy="20%" r="70%">
+      <stop offset="0%" stop-color="#FF3E3E" stop-opacity=".52"/>
+      <stop offset="62%" stop-color="#FF3E3E" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#FF3E3E" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="82%" cy="62%" r="68%">
+      <stop offset="0%" stop-color="#FF7E00" stop-opacity=".5"/>
+      <stop offset="58%" stop-color="#FF7E00" stop-opacity=".09"/>
+      <stop offset="100%" stop-color="#FF7E00" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000000" flood-opacity=".55"/>
+    </filter>
+    <pattern id="grid" width="54" height="54" patternUnits="userSpaceOnUse">
+      <path d="M54 0H0V54" fill="none" stroke="#ffffff" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <style>
+      .line{fill:none;stroke:#f7f4ed;stroke-width:18;stroke-linecap:round;stroke-linejoin:round}
+      .thin{fill:none;stroke:#f7f4ed;stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+      .gold{stroke:#FF3E3E;fill:none}
+      .blue{stroke:#FF7E00;fill:none}
+      .fillGold{fill:#FF3E3E}
+      .fillBlue{fill:#FF7E00}
+      .soft{opacity:.24}
+      .label{font:800 24px Inter,system-ui,sans-serif;letter-spacing:8px;fill:#61a0ff}
+      .title{font:900 42px Inter,system-ui,sans-serif;letter-spacing:0;fill:#fff7e7}
+      .micro{font:800 18px Inter,system-ui,sans-serif;letter-spacing:5px;fill:#aeb6c9}
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#warm)"/>
+  <rect width="1280" height="720" fill="url(#cool)"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <path d="M-80 622C210 548 370 664 642 584c245-72 406-264 718-196" fill="none" stroke="#FF3E3E" stroke-opacity=".16" stroke-width="72"/>
+  <path d="M-88 650C245 590 428 676 690 608c230-60 380-224 666-170" fill="none" stroke="#FF7E00" stroke-opacity=".13" stroke-width="44"/>
+  <g filter="url(#softShadow)"><path d="M692 450c104 38 222 50 354 36 36-4 62 22 38 56-54 56-296 70-470-28" fill="#f7f4ed" opacity=".15" stroke="#f7f4ed" stroke-width="10"/><path d="M718 292c78 94 112 158 102 194M826 274c44 108 56 174 36 214M936 282c-2 106-26 174-72 204" class="thin"/><path d="M972 220c74 34 104 84 90 150-72-20-104-70-90-150ZM766 190c64 46 82 98 54 156-62-32-80-84-54-156Z" fill="#dc4e15" opacity=".72"/></g>
+</svg>

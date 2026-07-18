@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Week 9: The Ghost of Guilt</title>
+  <desc id="desc">A dark, ominous shadow figure dissolving into white, flying birds as it steps into a broad beam of pure, warm sunshine</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05060c"/>
+      <stop offset="48%" stop-color="#090d1b"/>
+      <stop offset="100%" stop-color="#030510"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="18%" cy="20%" r="70%">
+      <stop offset="0%" stop-color="#00C2FF" stop-opacity=".52"/>
+      <stop offset="62%" stop-color="#00C2FF" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#00C2FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="82%" cy="62%" r="68%">
+      <stop offset="0%" stop-color="#FF9900" stop-opacity=".5"/>
+      <stop offset="58%" stop-color="#FF9900" stop-opacity=".09"/>
+      <stop offset="100%" stop-color="#FF9900" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000000" flood-opacity=".55"/>
+    </filter>
+    <pattern id="grid" width="54" height="54" patternUnits="userSpaceOnUse">
+      <path d="M54 0H0V54" fill="none" stroke="#ffffff" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <style>
+      .line{fill:none;stroke:#f7f4ed;stroke-width:18;stroke-linecap:round;stroke-linejoin:round}
+      .thin{fill:none;stroke:#f7f4ed;stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+      .gold{stroke:#00C2FF;fill:none}
+      .blue{stroke:#FF9900;fill:none}
+      .fillGold{fill:#00C2FF}
+      .fillBlue{fill:#FF9900}
+      .soft{opacity:.24}
+      .label{font:800 24px Inter,system-ui,sans-serif;letter-spacing:8px;fill:#61a0ff}
+      .title{font:900 42px Inter,system-ui,sans-serif;letter-spacing:0;fill:#fff7e7}
+      .micro{font:800 18px Inter,system-ui,sans-serif;letter-spacing:5px;fill:#aeb6c9}
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#warm)"/>
+  <rect width="1280" height="720" fill="url(#cool)"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <path d="M-80 622C210 548 370 664 642 584c245-72 406-264 718-196" fill="none" stroke="#00C2FF" stroke-opacity=".16" stroke-width="72"/>
+  <path d="M-88 650C245 590 428 676 690 608c230-60 380-224 666-170" fill="none" stroke="#FF9900" stroke-opacity=".13" stroke-width="44"/>
+  <g filter="url(#softShadow)"><path d="M716 520c24-156 44-254 118-254s96 98 120 254Z" fill="#000000" opacity=".62"/><path d="M914 250h296v150H914Z" fill="#ffd36a" opacity=".18" filter="url(#glow)"/><path d="M944 294c36-40 70-40 102 0M1014 346c44-44 84-44 122 0M904 404c34-32 66-32 98 0" class="thin gold"/></g>
+</svg>
