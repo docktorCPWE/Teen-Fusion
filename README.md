@@ -1,6 +1,6 @@
 # Teen Fusion
 
-Teen Fusion is a static curriculum dashboard for youth leaders. It includes a 52-week lesson library, content calendar, student roster, saved resources, lesson artwork, and local progress tracking.
+Teen Fusion is a static master lesson planner and curriculum dashboard for youth leaders. It includes a 52-week lesson library, content calendar, student roster, saved resources, lesson artwork, and local progress tracking.
 
 ## What Is Included
 
