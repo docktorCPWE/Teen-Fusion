@@ -63,6 +63,90 @@ button {
   box-shadow: var(--shadow);
 }
 
+.auth-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(244, 85, 28, 0.22), transparent 22rem),
+    radial-gradient(circle at 86% 20%, rgba(47, 118, 255, 0.24), transparent 24rem),
+    #050713;
+  place-items: center;
+}
+
+.auth-card {
+  display: grid;
+  gap: 16px;
+  width: min(620px, 100%);
+  padding: clamp(24px, 4vw, 44px);
+  border: 1px solid rgba(255, 183, 42, 0.28);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(47, 118, 255, 0.18), transparent 12rem),
+    rgba(10, 14, 26, 0.9);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+}
+
+.auth-card img {
+  width: 150px;
+  margin-bottom: 4px;
+  border-radius: var(--radius);
+}
+
+.auth-card h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  line-height: 0.98;
+}
+
+.auth-card p {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.env-list,
+.account-summary {
+  display: grid;
+  gap: 8px;
+  min-width: min(100%, 380px);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(5, 8, 16, 0.7);
+}
+
+.env-list code {
+  color: var(--gold-2);
+  font-size: 0.95rem;
+}
+
+.account-summary strong {
+  color: var(--text);
+}
+
+.account-summary span {
+  color: var(--muted);
+}
+
+.form-error {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 93, 93, 0.36);
+  border-radius: var(--radius);
+  background: rgba(255, 93, 93, 0.1);
+  color: #ffb6b6 !important;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr) clamp(392px, 24vw, 460px);
@@ -1527,6 +1611,134 @@ button {
   white-space: pre-wrap;
 }
 
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 86% 10%, rgba(47, 118, 255, 0.14), transparent 10rem),
+    rgba(10, 14, 26, 0.84);
+  padding: 18px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.2);
+}
+
+.settings-card-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-card h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.35rem;
+}
+
+.settings-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.member-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.member-badges span,
+.sync-pill {
+  width: fit-content;
+  min-height: 30px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 183, 42, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 166, 28, 0.08);
+  color: var(--gold-2);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.member-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.member-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.member-section-head h3 {
+  margin: 0;
+  color: var(--gold-2);
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.member-section-head span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.member-identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.member-identity strong,
+.member-identity span,
+.member-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-identity strong {
+  color: var(--text);
+}
+
+.member-identity span,
+.member-identity small {
+  color: var(--muted);
+}
+
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 @media (max-width: 1440px) {
   .app-shell {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -1665,6 +1877,22 @@ button {
 
   .calendar-side {
     grid-template-columns: 1fr;
+  }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .member-row {
+    grid-template-columns: 1fr;
+  }
+
+  .member-actions {
+    justify-content: stretch;
+  }
+
+  .member-actions .ghost-button {
+    width: 100%;
   }
 
   .form-grid,

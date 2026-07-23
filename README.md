@@ -1,6 +1,6 @@
 # Teen Fusion
 
-Teen Fusion is a static master lesson planner and curriculum dashboard for youth leaders. It includes a 52-week lesson library, content calendar, student roster, saved resources, lesson artwork, and local progress tracking.
+Teen Fusion is a secure master lesson planner and curriculum dashboard for youth leaders. It includes a 52-week lesson library, content calendar, shared student roster, saved resources, lesson artwork, and local progress tracking.
 
 ## What Is Included
 
@@ -8,16 +8,31 @@ Teen Fusion is a static master lesson planner and curriculum dashboard for youth
 - Lesson detail panel with discussion questions and NLT scripture links
 - Per-lesson PowerPoint presentation downloads for Proclaim or slide workflows
 - Content calendar with Sunday lessons and Wednesday carryover entries
-- My Group roster with student contact and emergency details
+- My Group roster with student contact and emergency details stored in Supabase
+- Google sign-in with pending/approved/disabled leader access
+- Settings admin area for approving or disabling youth leader accounts
 - Resources page for saved notes, links, activities, prayer items, and follow-ups
 - Generated lesson artwork for all 52 curriculum weeks
 
 ## Run Locally
 
-This is a static site. From the project folder, run:
+Install dependencies once:
 
 ```bash
-python3 -m http.server 5173
+npm install
+```
+
+Create `.env.local` with the Supabase public values:
+
+```bash
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+Then run:
+
+```bash
+npm run dev
 ```
 
 Then open:
@@ -26,6 +41,17 @@ Then open:
 http://127.0.0.1:5173/
 ```
 
+## Vercel Environment Variables
+
+Add these variables to the Vercel project for Production, Preview, and Development:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Only use the public Supabase URL and publishable/anon key in Vercel. Do not add a Supabase service-role key to the frontend.
+
 ## Notes
 
-Progress, student roster entries, and saved resources currently use browser localStorage. Before sharing this broadly with real student data, add authentication and a secure database/backend.
+Student roster entries use Supabase and require an approved member account. Curriculum progress and saved resources still use browser localStorage.

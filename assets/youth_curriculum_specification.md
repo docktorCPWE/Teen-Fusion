@@ -7,7 +7,7 @@ This document serves as the structural specification for the companion mobile an
 
 ## Data Model & Configuration Schemas
 
-### 1. Curriculum Database Schema (SwiftData / Firebase)
+### 1. Curriculum Data Schema
 ```swift
 struct Module: Identifiable, Codable {
     let id: UUID

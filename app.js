@@ -1,9 +1,15 @@
+import { createClient } from "@supabase/supabase-js";
+
 const CURRICULUM_URL = "./assets/youth_curriculum_specification.md";
 const STORAGE_KEY = "teen-fusion-taught-weeks";
 const SCHEDULE_START_KEY = "teen-fusion-schedule-start";
-const STUDENTS_STORAGE_KEY = "teen-fusion-students";
 const RESOURCES_STORAGE_KEY = "teen-fusion-resources";
 const NLT_VERSION = "NLT";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 const app = document.querySelector("#app");
 let searchRenderTimer = null;
@@ -30,6 +36,14 @@ const state = {
   selectedStudentId: "",
   resources: [],
   selectedResourceId: "",
+  authLoading: Boolean(supabase),
+  authError: "",
+  studentSyncing: false,
+  memberSyncing: false,
+  session: null,
+  user: null,
+  member: null,
+  members: [],
 };
 
 const icons = {
@@ -78,13 +92,12 @@ async function init() {
   state.modules = parsed.modules;
   state.lessons = parsed.lessons;
   state.taught = loadTaught();
-  state.students = loadStudents();
-  state.selectedStudentId = state.students[0]?.id || "";
   state.resources = loadResources();
   state.selectedResourceId = state.resources[0]?.id || "";
   state.scheduleStart = loadScheduleStart();
   state.calendarCursor = monthKey(parseLocalDate(state.scheduleStart));
   state.selectedWeek = firstUntaughtWeek() || 1;
+  await initializeAuth();
   applyHashSelection();
   window.addEventListener("hashchange", () => {
     if (applyHashSelection()) render();
@@ -189,7 +202,277 @@ function parseCurriculum(markdown) {
   return { modules, lessons };
 }
 
+async function initializeAuth() {
+  if (!supabase) {
+    state.authLoading = false;
+    return;
+  }
+
+  state.authLoading = true;
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    state.authError = error.message;
+    state.authLoading = false;
+    return;
+  }
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    window.setTimeout(() => {
+      syncAuthSession(session);
+    }, 0);
+  });
+
+  await syncAuthSession(data.session, { silent: true });
+  state.authLoading = false;
+}
+
+async function syncAuthSession(session, options = {}) {
+  state.session = session;
+  state.user = session?.user || null;
+  state.authError = "";
+
+  if (!state.user) {
+    state.member = null;
+    state.members = [];
+    state.students = [];
+    state.selectedStudentId = "";
+    if (!options.silent) render();
+    return;
+  }
+
+  await loadCurrentMember();
+  if (isApprovedMember()) {
+    await loadStudentsFromSupabase();
+    if (isApprovedAdmin()) await loadMembersFromSupabase();
+  } else {
+    state.students = [];
+    state.selectedStudentId = "";
+  }
+
+  if (!options.silent) render();
+}
+
+async function loadCurrentMember() {
+  state.memberSyncing = true;
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .eq("user_id", state.user.id)
+    .maybeSingle();
+
+  if (error) {
+    state.authError = error.message;
+    state.memberSyncing = false;
+    return;
+  }
+
+  if (data) {
+    state.member = normalizeMember(data);
+    state.memberSyncing = false;
+    return;
+  }
+
+  const profile = {
+    user_id: state.user.id,
+    full_name: userDisplayName(state.user),
+    email: state.user.email || "",
+  };
+  const { data: inserted, error: insertError } = await supabase
+    .from("members")
+    .insert(profile)
+    .select()
+    .single();
+
+  if (insertError) state.authError = insertError.message;
+  state.member = inserted ? normalizeMember(inserted) : null;
+  state.memberSyncing = false;
+}
+
+async function loadMembersFromSupabase() {
+  if (!isApprovedAdmin()) return;
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .order("status", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    state.authError = error.message;
+    return;
+  }
+
+  state.members = (data || []).map(normalizeMember);
+}
+
+async function loadStudentsFromSupabase() {
+  state.studentSyncing = true;
+  const { data, error } = await supabase
+    .from("students")
+    .select("*")
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true });
+
+  if (error) {
+    state.authError = error.message;
+    state.studentSyncing = false;
+    return;
+  }
+
+  state.students = (data || []).map(normalizeStudent);
+  state.selectedStudentId = state.students.some((student) => student.id === state.selectedStudentId)
+    ? state.selectedStudentId
+    : state.students[0]?.id || "";
+  state.studentSyncing = false;
+}
+
+async function saveStudentToSupabase(student) {
+  if (!isApprovedMember()) throw new Error("Your account is not approved to edit the roster yet.");
+  const payload = studentToRow(student);
+
+  if (state.editingStudentId) {
+    const { data, error } = await supabase
+      .from("students")
+      .update(payload)
+      .eq("id", state.editingStudentId)
+      .select()
+      .single();
+    if (error) throw error;
+    const saved = normalizeStudent(data);
+    state.students = state.students.map((entry) => (entry.id === saved.id ? saved : entry));
+    state.selectedStudentId = saved.id;
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("students")
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  const saved = normalizeStudent(data);
+  state.students = [saved, ...state.students];
+  state.selectedStudentId = saved.id;
+}
+
+async function deleteStudentFromSupabase(studentId) {
+  if (!isApprovedMember()) throw new Error("Your account is not approved to edit the roster yet.");
+  const { error } = await supabase.from("students").delete().eq("id", studentId);
+  if (error) throw error;
+  state.students = state.students.filter((entry) => entry.id !== studentId);
+  state.selectedStudentId = state.students[0]?.id || "";
+}
+
+async function updateMemberAccess(userId, changes) {
+  if (!isApprovedAdmin()) throw new Error("Only approved admins can update leader access.");
+  const { data, error } = await supabase
+    .from("members")
+    .update({ ...changes, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .select()
+    .single();
+  if (error) throw error;
+  const updated = normalizeMember(data);
+  state.members = state.members.map((member) => (member.userId === updated.userId ? updated : member));
+  if (state.user?.id === updated.userId) state.member = updated;
+}
+
+async function signInWithGoogle() {
+  if (!supabase) return;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
+  });
+  if (error) {
+    state.authError = error.message;
+    render();
+  }
+}
+
+async function signOut() {
+  if (!supabase) return;
+  await supabase.auth.signOut();
+  await syncAuthSession(null);
+}
+
+function shouldShowAuthGate() {
+  if (!supabase) return true;
+  if (state.authLoading) return true;
+  if (!state.user) return true;
+  if (!isApprovedMember()) return true;
+  return false;
+}
+
+function isApprovedMember() {
+  return state.member?.status === "approved" && ["admin", "leader"].includes(state.member?.role);
+}
+
+function isApprovedAdmin() {
+  return state.member?.status === "approved" && state.member?.role === "admin";
+}
+
+function normalizeStudent(row) {
+  return {
+    id: String(row.id),
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
+    address: row.address || "",
+    phone: row.phone || "",
+    emergencyName: row.emergency_contact_name || "",
+    emergencyPhone: row.emergency_contact_phone || "",
+    notes: row.pertinent_info || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function studentToRow(student) {
+  return {
+    first_name: student.firstName,
+    last_name: student.lastName,
+    address: student.address || null,
+    phone: student.phone || null,
+    emergency_contact_name: student.emergencyName || null,
+    emergency_contact_phone: student.emergencyPhone || null,
+    pertinent_info: student.notes || null,
+  };
+}
+
+function normalizeMember(row) {
+  return {
+    userId: row.user_id,
+    fullName: row.full_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    role: row.role || "leader",
+    status: row.status || "pending",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function userDisplayName(user = state.user) {
+  return user?.user_metadata?.full_name
+    || user?.user_metadata?.name
+    || user?.email
+    || "Youth Leader";
+}
+
+function accountInitials() {
+  const source = userDisplayName();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return source.slice(0, 2).toUpperCase() || "TF";
+}
+
 function render() {
+  if (shouldShowAuthGate()) {
+    app.innerHTML = renderAuthGate();
+    bindAuthEvents();
+    return;
+  }
+
   const selected = getSelectedLesson();
   const taughtCount = state.taught.size;
   const progress = Math.round((taughtCount / state.lessons.length) * 100);
@@ -213,13 +496,68 @@ function renderActivePage() {
   if (state.activeView === "calendar") return renderCalendarPage();
   if (state.activeView === "group") return renderGroupPage();
   if (state.activeView === "resources") return renderResourcesPage();
+  if (state.activeView === "settings") return renderSettingsPage();
   return renderDashboardPage();
 }
 
 function renderSideDetail(selectedLesson) {
   if (state.activeView === "group") return renderStudentDetail();
   if (state.activeView === "resources") return renderResourceDetail();
+  if (state.activeView === "settings") return renderAccountDetail();
   return renderDetail(selectedLesson);
+}
+
+function renderAuthGate() {
+  let eyebrow = "Secure Roster";
+  let title = "Sign in to Teen Fusion";
+  let message = "Use your approved Google account to access the shared youth leader dashboard and student roster.";
+  let actions = `<button class="primary-button" data-action="sign-in-google">${icons.users} Continue with Google</button>`;
+
+  if (!supabase) {
+    eyebrow = "Setup Needed";
+    title = "Supabase is not configured yet";
+    message = "Add the public Supabase URL and anon key to Vercel, then pull them into local development when you want to test on this Mac.";
+    actions = `
+      <div class="env-list">
+        <code>VITE_SUPABASE_URL</code>
+        <code>VITE_SUPABASE_ANON_KEY</code>
+      </div>
+    `;
+  } else if (state.authLoading) {
+    eyebrow = "Loading";
+    title = "Checking your access";
+    message = "One moment while Teen Fusion verifies your sign-in and roster permissions.";
+    actions = `<div class="sync-pill">Checking access...</div>`;
+  } else if (state.user && state.member?.status === "pending") {
+    eyebrow = "Approval Needed";
+    title = "Your leader request is waiting";
+    message = "Your Google sign-in worked. A church admin needs to approve this account before student roster details are available.";
+    actions = `
+      <div class="account-summary">
+        <strong>${escapeHtml(userDisplayName())}</strong>
+        <span>${escapeHtml(state.user.email || "")}</span>
+      </div>
+      <button class="ghost-button" data-action="sign-out">Sign out</button>
+    `;
+  } else if (state.user && state.member?.status === "disabled") {
+    eyebrow = "Access Disabled";
+    title = "This account cannot access the roster";
+    message = "A church admin has disabled this leader account. Sign out to use a different approved Google account.";
+    actions = `<button class="ghost-button" data-action="sign-out">Sign out</button>`;
+  }
+
+  return `
+    <main class="auth-shell">
+      <section class="auth-card">
+        <img src="./assets/teen-fusion-logo.png" alt="Teen Fusion" />
+        <span class="section-label">${eyebrow}</span>
+        <h1>${title}</h1>
+        <p>${message}</p>
+        ${state.authError ? `<p class="form-error">${escapeHtml(state.authError)}</p>` : ""}
+        <div class="auth-actions">${actions}</div>
+      </section>
+    </main>
+  `;
 }
 
 function renderDashboardPage() {
@@ -453,7 +791,7 @@ function renderStudentEmptyState() {
     <div class="empty-state">
       <div>
         <strong>No students yet.</strong>
-        <p class="muted-copy">Use the form to build this group roster.</p>
+        <p class="muted-copy">Use Add Student to build this shared group roster.</p>
       </div>
     </div>
   `;
@@ -659,6 +997,118 @@ function resourceDetailSection(label, value) {
   `;
 }
 
+function renderSettingsPage() {
+  const pendingMembers = state.members.filter((member) => member.status === "pending");
+  const approvedMembers = state.members.filter((member) => member.status === "approved");
+  const disabledMembers = state.members.filter((member) => member.status === "disabled");
+  return `
+    <header class="topbar group-topbar">
+      <div class="title-stack">
+        <h1>Settings</h1>
+        <p>Manage leader access, account status, and the secure shared roster connection.</p>
+      </div>
+      <div class="group-actions">
+        <button class="ghost-button" data-action="refresh-remote-data">${icons.check} Refresh</button>
+        <button class="ghost-button" data-action="sign-out">Sign out</button>
+      </div>
+    </header>
+
+    <section class="settings-layout">
+      <article class="settings-card">
+        <span class="section-label">Signed In</span>
+        <h2>${escapeHtml(userDisplayName())}</h2>
+        <p>${escapeHtml(state.user?.email || "No email listed")}</p>
+        <div class="member-badges">
+          <span>${escapeHtml(state.member?.role || "leader")}</span>
+          <span>${escapeHtml(state.member?.status || "pending")}</span>
+        </div>
+      </article>
+
+      <article class="settings-card">
+        <span class="section-label">Roster Storage</span>
+        <h2>Supabase Connected</h2>
+        <p>Student cards are stored in the shared Supabase roster, so approved leaders can see the same student data from desktop and mobile.</p>
+        ${state.studentSyncing ? `<div class="sync-pill">Syncing roster...</div>` : ""}
+      </article>
+
+      ${isApprovedAdmin() ? `
+        <section class="settings-card settings-card-wide">
+          <div class="content-head">
+            <div>
+              <span class="section-label">Admin Access</span>
+              <h2>Leader Approvals</h2>
+            </div>
+            <span class="muted-copy">${state.members.length} total accounts</span>
+          </div>
+          ${renderMemberSection("Pending Requests", pendingMembers)}
+          ${renderMemberSection("Approved Leaders", approvedMembers)}
+          ${renderMemberSection("Disabled Accounts", disabledMembers)}
+        </section>
+      ` : `
+        <article class="settings-card settings-card-wide">
+          <span class="section-label">Leader Access</span>
+          <h2>Approved Leader</h2>
+          <p>You can view and update the shared roster. Admin approval controls are only shown to admin accounts.</p>
+        </article>
+      `}
+    </section>
+  `;
+}
+
+function renderMemberSection(title, members) {
+  return `
+    <section class="member-section">
+      <div class="member-section-head">
+        <h3>${title}</h3>
+        <span>${members.length}</span>
+      </div>
+      <div class="member-list">
+        ${members.length ? members.map(renderMemberRow).join("") : `<p class="muted-copy">Nothing here right now.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderMemberRow(member) {
+  const isSelf = member.userId === state.user?.id;
+  return `
+    <article class="member-row">
+      <div class="member-identity">
+        <strong>${escapeHtml(member.fullName || member.email || "Unnamed Leader")}</strong>
+        <span>${escapeHtml(member.email || "No email listed")}</span>
+        <small>${escapeHtml(member.role)} · ${escapeHtml(member.status)}${isSelf ? " · You" : ""}</small>
+      </div>
+      <div class="member-actions">
+        ${member.status !== "approved" ? `<button class="ghost-button" data-action="approve-member" data-user-id="${member.userId}">${icons.check} Approve</button>` : ""}
+        ${member.status !== "disabled" && !isSelf ? `<button class="ghost-button danger-action" data-action="disable-member" data-user-id="${member.userId}">Disable</button>` : ""}
+        ${member.status === "approved" && member.role !== "admin" ? `<button class="ghost-button" data-action="make-admin" data-user-id="${member.userId}">Make Admin</button>` : ""}
+        ${member.status === "approved" && member.role === "admin" && !isSelf ? `<button class="ghost-button" data-action="make-leader" data-user-id="${member.userId}">Make Leader</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderAccountDetail() {
+  return `
+    <aside class="detail-panel ${state.detailOpen ? "open" : ""}" aria-label="Account details">
+      <button class="detail-close" data-action="close-detail" aria-label="Close details">${icons.x}</button>
+      <div class="student-detail-header">
+        <div class="student-avatar large">${accountInitials()}</div>
+        <span class="section-label">Account</span>
+        <h2>${escapeHtml(userDisplayName())}</h2>
+      </div>
+      ${studentDetailSection("Email", state.user?.email || "No email listed.")}
+      ${studentDetailSection("Role", state.member?.role || "leader")}
+      ${studentDetailSection("Status", state.member?.status || "pending")}
+      ${studentDetailSection("Roster Mode", "Shared Supabase roster for approved youth leaders.")}
+      <div class="detail-actions">
+        <button class="ghost-button" data-action="refresh-remote-data">${icons.check} Refresh Access</button>
+        <button class="ghost-button" data-action="sign-out">Sign out</button>
+      </div>
+    </aside>
+  `;
+}
+
 function renderSidebar(taughtCount, upcoming, progress) {
   return `
     <aside class="sidebar">
@@ -676,7 +1126,7 @@ function renderSidebar(taughtCount, upcoming, progress) {
         ${navItem("calendar", "Calendar", "calendar", state.activeView === "calendar")}
         ${navItem("users", "My Group", "group", state.activeView === "group")}
         ${navItem("folder", "Resources", "resources", state.activeView === "resources")}
-        ${navItem("gear", "Settings")}
+        ${navItem("gear", "Settings", "settings", state.activeView === "settings")}
       </ul>
 
       <section class="progress-block">
@@ -1641,7 +2091,7 @@ function bindEvents() {
     document.addEventListener("keydown", closeResourceModalOnEscape, { once: true });
   }
 
-  document.querySelector("#student-form")?.addEventListener("submit", (event) => {
+  document.querySelector("#student-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
@@ -1655,27 +2105,21 @@ function bindEvents() {
       notes: String(data.get("notes") || "").trim(),
     };
     if (!student.firstName || !student.lastName) return;
-    if (state.editingStudentId) {
-      const updatedAt = new Date().toISOString();
-      state.students = state.students.map((entry) => (
-        entry.id === state.editingStudentId
-          ? { ...entry, ...student, updatedAt }
-          : entry
-      ));
-      state.selectedStudentId = state.editingStudentId;
-    } else {
-      const newStudent = {
-        id: `student-${Date.now()}`,
-        ...student,
-        createdAt: new Date().toISOString(),
-      };
-      state.students = [newStudent, ...state.students];
-      state.selectedStudentId = newStudent.id;
+    const submitButton = form.querySelector("button[type='submit']");
+    submitButton.disabled = true;
+    submitButton.innerHTML = `${icons.check} Saving...`;
+    try {
+      await saveStudentToSupabase(student);
+    } catch (error) {
+      console.error(error);
+      alert(`The student could not be saved: ${error.message}`);
+      submitButton.disabled = false;
+      submitButton.innerHTML = `${icons.check} ${state.editingStudentId ? "Save Changes" : "Save Student"}`;
+      return;
     }
     state.detailOpen = true;
     state.studentModalOpen = false;
     state.editingStudentId = "";
-    saveStudents();
     form.reset();
     render();
   });
@@ -1696,15 +2140,18 @@ function bindEvents() {
     });
   });
 
-  document.querySelector("[data-action='delete-student']")?.addEventListener("click", (event) => {
+  document.querySelector("[data-action='delete-student']")?.addEventListener("click", async (event) => {
     const student = selectedStudent();
     if (!student) return;
     if (!confirm(`Remove ${studentName(student)} from My Group?`)) return;
-    state.students = state.students.filter((entry) => entry.id !== event.currentTarget.dataset.studentId);
-    state.selectedStudentId = state.students[0]?.id || "";
-    state.editingStudentId = "";
-    saveStudents();
-    render();
+    try {
+      await deleteStudentFromSupabase(event.currentTarget.dataset.studentId);
+      state.editingStudentId = "";
+      render();
+    } catch (error) {
+      console.error(error);
+      alert(`The student could not be removed: ${error.message}`);
+    }
   });
 
   document.querySelector("[data-action='edit-student']")?.addEventListener("click", (event) => {
@@ -1817,6 +2264,72 @@ function bindEvents() {
     state.statusFilter = event.target.value;
     render();
   });
+
+  bindAuthEvents();
+  bindMemberAdminEvents();
+}
+
+function bindAuthEvents() {
+  document.querySelectorAll("[data-action='sign-in-google']").forEach((button) => {
+    button.addEventListener("click", signInWithGoogle);
+  });
+
+  document.querySelectorAll("[data-action='sign-out']").forEach((button) => {
+    button.addEventListener("click", signOut);
+  });
+
+  document.querySelectorAll("[data-action='refresh-remote-data']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.innerHTML = `${icons.check} Refreshing...`;
+      await syncAuthSession(state.session);
+    });
+  });
+}
+
+function bindMemberAdminEvents() {
+  document.querySelectorAll("[data-action='approve-member']").forEach((button) => {
+    button.addEventListener("click", () => handleMemberUpdate(button, {
+      status: "approved",
+      role: "leader",
+    }));
+  });
+
+  document.querySelectorAll("[data-action='disable-member']").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (confirm("Disable this leader account?")) handleMemberUpdate(button, { status: "disabled" });
+    });
+  });
+
+  document.querySelectorAll("[data-action='make-admin']").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (confirm("Make this leader an admin? They will be able to approve and disable other leaders.")) {
+        handleMemberUpdate(button, { role: "admin", status: "approved" });
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-action='make-leader']").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (confirm("Change this admin back to a leader?")) handleMemberUpdate(button, { role: "leader" });
+    });
+  });
+}
+
+async function handleMemberUpdate(button, changes) {
+  const originalLabel = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = `${icons.check} Saving...`;
+  try {
+    await updateMemberAccess(button.dataset.userId, changes);
+    await loadMembersFromSupabase();
+    render();
+  } catch (error) {
+    console.error(error);
+    alert(`Leader access could not be updated: ${error.message}`);
+    button.disabled = false;
+    button.innerHTML = originalLabel;
+  }
 }
 
 function closeStudentModalOnEscape(event) {
@@ -1902,19 +2415,6 @@ function loadTaught() {
 
 function saveTaught() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...state.taught].sort((a, b) => a - b)));
-}
-
-function loadStudents() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STUDENTS_STORAGE_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStudents() {
-  localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(state.students));
 }
 
 function loadResources() {
