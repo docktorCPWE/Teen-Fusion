@@ -14,6 +14,7 @@ const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
 const app = document.querySelector("#app");
 let searchRenderTimer = null;
 let pendingSearchSelection = null;
+let memberLoadPromise = null;
 
 const state = {
   modules: [],
@@ -253,6 +254,14 @@ async function syncAuthSession(session, options = {}) {
 }
 
 async function loadCurrentMember() {
+  if (memberLoadPromise) return memberLoadPromise;
+  memberLoadPromise = loadCurrentMemberOnce().finally(() => {
+    memberLoadPromise = null;
+  });
+  return memberLoadPromise;
+}
+
+async function loadCurrentMemberOnce() {
   state.memberSyncing = true;
   const { data, error } = await supabase
     .from("members")
@@ -283,9 +292,40 @@ async function loadCurrentMember() {
     .select()
     .single();
 
-  if (insertError) state.authError = insertError.message;
+  if (insertError && !isDuplicateMemberError(insertError)) {
+    state.authError = friendlyAuthError(insertError.message);
+  }
+  if (insertError && isDuplicateMemberError(insertError)) {
+    const { data: existing, error: existingError } = await supabase
+      .from("members")
+      .select("*")
+      .eq("user_id", state.user.id)
+      .maybeSingle();
+    if (existingError) state.authError = friendlyAuthError(existingError.message);
+    state.member = existing ? normalizeMember(existing) : null;
+    if (!existing && !existingError) {
+      state.authError = "Your leader request is already in the system. Refresh the page or wait for an admin to approve it.";
+    }
+    state.memberSyncing = false;
+    return;
+  }
+
   state.member = inserted ? normalizeMember(inserted) : null;
   state.memberSyncing = false;
+}
+
+function isDuplicateMemberError(error) {
+  return error?.code === "23505" || /duplicate key value/i.test(error?.message || "");
+}
+
+function friendlyAuthError(message = "") {
+  if (/duplicate key value/i.test(message)) {
+    return "Your leader request is already in the system. Refresh the page or wait for an admin to approve it.";
+  }
+  if (/permission denied/i.test(message)) {
+    return "Your sign-in worked, but access is still being prepared. Please refresh or ask an admin to approve your account.";
+  }
+  return message;
 }
 
 async function loadMembersFromSupabase() {
