@@ -5,8 +5,8 @@ const STORAGE_KEY = "teen-fusion-taught-weeks";
 const SCHEDULE_START_KEY = "teen-fusion-schedule-start";
 const RESOURCES_STORAGE_KEY = "teen-fusion-resources";
 const NLT_VERSION = "NLT";
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://typvwcjirkbhpnlaljdz.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_c9fnlAUuIsyfjasaoN7fCA_G71EmXO_";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
