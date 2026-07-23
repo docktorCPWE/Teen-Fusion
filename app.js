@@ -416,6 +416,21 @@ async function updateMemberAccess(userId, changes) {
   if (state.user?.id === updated.userId) state.member = updated;
 }
 
+async function deleteDisabledMember(userId) {
+  if (!isApprovedAdmin()) throw new Error("Only approved admins can delete leader accounts.");
+  const member = state.members.find((entry) => entry.userId === userId);
+  if (!member || member.status !== "disabled") {
+    throw new Error("A leader account must be disabled before it can be deleted.");
+  }
+  if (userId === state.user?.id) {
+    throw new Error("You cannot delete your own admin account from here.");
+  }
+
+  const { error } = await supabase.from("members").delete().eq("user_id", userId);
+  if (error) throw error;
+  state.members = state.members.filter((entry) => entry.userId !== userId);
+}
+
 async function signInWithGoogle() {
   if (!supabase) return;
   const { error } = await supabase.auth.signInWithOAuth({
@@ -1121,6 +1136,7 @@ function renderMemberRow(member) {
       <div class="member-actions">
         ${member.status !== "approved" ? `<button class="ghost-button" data-action="approve-member" data-user-id="${member.userId}">${icons.check} Approve</button>` : ""}
         ${member.status !== "disabled" && !isSelf ? `<button class="ghost-button danger-action" data-action="disable-member" data-user-id="${member.userId}">Disable</button>` : ""}
+        ${member.status === "disabled" && !isSelf ? `<button class="ghost-button danger-action" data-action="delete-member" data-user-id="${member.userId}">Delete</button>` : ""}
         ${member.status === "approved" && member.role !== "admin" ? `<button class="ghost-button" data-action="make-admin" data-user-id="${member.userId}">Make Admin</button>` : ""}
         ${member.status === "approved" && member.role === "admin" && !isSelf ? `<button class="ghost-button" data-action="make-leader" data-user-id="${member.userId}">Make Leader</button>` : ""}
       </div>
@@ -2341,6 +2357,14 @@ function bindMemberAdminEvents() {
     });
   });
 
+  document.querySelectorAll("[data-action='delete-member']").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (confirm("Delete this disabled leader from the admin console? They can request access again by signing in later.")) {
+        handleMemberDelete(button);
+      }
+    });
+  });
+
   document.querySelectorAll("[data-action='make-admin']").forEach((button) => {
     button.addEventListener("click", () => {
       if (confirm("Make this leader an admin? They will be able to approve and disable other leaders.")) {
@@ -2367,6 +2391,22 @@ async function handleMemberUpdate(button, changes) {
   } catch (error) {
     console.error(error);
     alert(`Leader access could not be updated: ${error.message}`);
+    button.disabled = false;
+    button.innerHTML = originalLabel;
+  }
+}
+
+async function handleMemberDelete(button) {
+  const originalLabel = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = `${icons.check} Deleting...`;
+  try {
+    await deleteDisabledMember(button.dataset.userId);
+    await loadMembersFromSupabase();
+    render();
+  } catch (error) {
+    console.error(error);
+    alert(`Leader account could not be deleted: ${error.message}`);
     button.disabled = false;
     button.innerHTML = originalLabel;
   }
