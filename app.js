@@ -1350,7 +1350,7 @@ function renderDetail(lesson) {
         <button class="primary-button" data-action="toggle-taught" data-week="${lesson.week}">
           ${icons.check} ${state.taught.has(lesson.week) ? `Mark Week ${lesson.week} Available` : `Mark Week ${lesson.week} as Taught`}
         </button>
-        <button class="ghost-button" data-action="download-presentation" data-week="${lesson.week}">${icons.download} Download Presentation</button>
+        <button class="ghost-button" data-action="download-presentation" data-week="${lesson.week}">${icons.download} Download Slide Images</button>
         <button class="ghost-button" data-action="next-available">Jump to Next Available</button>
       </div>
     </aside>
@@ -1477,34 +1477,23 @@ function matchesAny(text, terms) {
 }
 
 async function downloadLessonPresentation(lesson) {
-  const imageBytes = await renderLessonImageAsPng(lesson).catch(() => null);
-  const files = buildPresentationFiles(lesson, imageBytes);
-  const blob = await createPresentationBlob(files);
+  const artwork = await loadLessonArtwork(lesson).catch(() => null);
+  const slideSpecs = buildLessonSlideSpecs(lesson, Boolean(artwork));
+  const blob = await createSlideImageZipBlob(lesson, slideSpecs, artwork);
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `${safeFilename(`Week ${lesson.week} ${lesson.title}`)}.pptx`;
+  link.download = `${safeFilename(`Week ${lesson.week} ${lesson.title} slide images`)}.zip`;
   document.body.append(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-async function renderLessonImageAsPng(lesson) {
+async function loadLessonArtwork(lesson) {
   const response = await fetch(lessonImageSrc(lesson));
   if (!response.ok) throw new Error("Lesson image could not be loaded.");
   const svg = await response.text();
-  const image = await loadImageFromBlob(new Blob([svg], { type: "image/svg+xml" }));
-  const canvas = document.createElement("canvas");
-  canvas.width = 1600;
-  canvas.height = 900;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Canvas is unavailable.");
-  context.fillStyle = "#050712";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.95));
-  if (!blob) throw new Error("Canvas export failed.");
-  return new Uint8Array(await blob.arrayBuffer());
+  return loadImageFromBlob(new Blob([svg], { type: "image/svg+xml" }));
 }
 
 function loadImageFromBlob(blob) {
@@ -1523,9 +1512,8 @@ function loadImageFromBlob(blob) {
   });
 }
 
-function buildPresentationFiles(lesson, imageBytes) {
+function buildLessonSlideSpecs(lesson, hasImage) {
   const lens = lessonContextLens(lesson);
-  const palette = presentationPalette(lesson);
   const scriptures = splitScriptureReferences(lesson.scripture);
   const contextSlides = [
     `Students are carrying this pressure: ${lens.pressure}.`,
@@ -1543,7 +1531,7 @@ function buildPresentationFiles(lesson, imageBytes) {
       subtitle: lesson.tagline,
       body: [scriptures.join("; ")],
       layout: "title",
-      image: Boolean(imageBytes),
+      image: hasImage,
     },
     {
       title: "The central idea",
@@ -1581,87 +1569,192 @@ function buildPresentationFiles(lesson, imageBytes) {
     },
   ];
 
-  const files = [
-    { path: "[Content_Types].xml", data: contentTypesXml(slideSpecs.length, Boolean(imageBytes)) },
-    { path: "_rels/.rels", data: rootRelsXml() },
-    { path: "docProps/app.xml", data: appPropsXml(slideSpecs.length) },
-    { path: "docProps/core.xml", data: corePropsXml(lesson) },
-    { path: "ppt/presentation.xml", data: presentationXml(slideSpecs.length) },
-    { path: "ppt/_rels/presentation.xml.rels", data: presentationRelsXml(slideSpecs.length) },
-    { path: "ppt/theme/theme1.xml", data: themeXml() },
-    { path: "ppt/slideMasters/slideMaster1.xml", data: slideMasterXml() },
-    { path: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: slideMasterRelsXml() },
-    { path: "ppt/slideLayouts/slideLayout1.xml", data: slideLayoutXml() },
-    { path: "ppt/slideLayouts/_rels/slideLayout1.xml.rels", data: slideLayoutRelsXml() },
-  ];
-
-  slideSpecs.forEach((spec, index) => {
-    const slideNumber = index + 1;
-    files.push({
-      path: `ppt/slides/slide${slideNumber}.xml`,
-      data: slideXml(spec, slideNumber, palette),
-    });
-    files.push({
-      path: `ppt/slides/_rels/slide${slideNumber}.xml.rels`,
-      data: slideRelsXml(spec.image && imageBytes),
-    });
-  });
-
-  if (imageBytes) files.push({ path: "ppt/media/lesson.png", data: imageBytes });
-  return files;
+  return slideSpecs;
 }
 
-function slideXml(spec, slideNumber, palette) {
-  const elements = [];
-  const add = (xml) => elements.push(xml);
-  const accent = slideNumber % 2 ? palette.primary : palette.accent;
-  add(rectShape(2, 0, 0, 13.333, 7.5, palette.background));
-  add(rectShape(3, 0, 0, 13.333, 0.16, accent));
-  add(rectShape(4, 0.55, 6.94, 12.25, 0.04, accent, 42000));
+async function createSlideImageZipBlob(lesson, slideSpecs, artwork) {
+  const zip = new JSZip();
+  const palette = presentationPalette(lesson);
 
-  if (spec.layout === "title") {
-    if (spec.image) {
-      add(picture(5, 6.35, 0.42, 6.45, 3.65));
-      add(rectShape(6, 6.1, 0.42, 0.15, 3.65, accent, 65000));
-    } else {
-      add(rectShape(5, 6.35, 0.62, 5.9, 3.25, palette.panel, 78000));
-    }
-    add(textBox(7, spec.kicker, 0.72, 0.72, 3.2, 0.42, 18, palette.primary, true));
-    add(textBox(8, spec.title, 0.72, 1.18, 5.55, 1.78, 42, "FFFFFF", true));
-    add(textBox(9, spec.subtitle || "", 0.72, 3.08, 5.55, 0.58, 22, palette.gold, true));
-    add(textBox(10, spec.body, 0.72, 4.1, 5.85, 0.68, 20, "9FC7FF", true));
-    add(textBox(11, "Teen Fusion Youth Curriculum", 0.72, 6.25, 4.4, 0.36, 15, "D7DCEB", false));
-  } else if (spec.layout === "statement") {
-    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
-    add(rectShape(6, 0.78, 1.7, 11.75, 3.55, palette.panel, 82000));
-    add(textBox(7, spec.body, 1.12, 2.05, 10.9, 2.5, 30, "FFFFFF", true));
-    add(textBox(8, "Let this become the bridge into the Scripture, not a substitute for it.", 1.12, 5.65, 10.7, 0.46, 18, "D7DCEB", false));
-  } else if (spec.layout === "scripture") {
-    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
-    add(textBox(6, spec.body.map((line) => `• ${line}`), 1.03, 1.85, 11.2, 2.25, 27, "9FC7FF", true));
-    add(rectShape(7, 0.92, 4.55, 11.45, 1.1, palette.panel, 78000));
-    add(textBox(8, spec.footer, 1.16, 4.86, 10.95, 0.5, 19, "FFFFFF", false));
-  } else if (spec.layout === "questions") {
-    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
-    add(textBox(6, spec.body.map((question, index) => `${index + 1}. ${shorten(question, 118)}`), 0.95, 1.75, 11.35, 4.25, 24, "FFFFFF", false));
-  } else {
-    add(textBox(5, spec.title, 0.72, 0.78, 11.8, 0.65, 34, palette.gold, true));
-    add(rectShape(6, 0.92, 1.65, 11.5, 4.12, palette.panel, 82000));
-    add(textBox(7, spec.body.map((line) => shorten(line, 230)), 1.2, 1.98, 10.9, 3.25, 19, "FFFFFF", false));
-    if (spec.footer) add(textBox(8, spec.footer, 1.2, 5.98, 10.8, 0.42, 18, palette.gold, true));
+  for (const [index, spec] of slideSpecs.entries()) {
+    const slideNumber = index + 1;
+    const image = await renderSlideImage(spec, slideNumber, palette, artwork);
+    const fileName = `${String(slideNumber).padStart(2, "0")}-${safeFilename(spec.title)}.jpg`;
+    zip.file(fileName, image);
   }
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-      ${elements.join("\n      ")}
-    </p:spTree>
-  </p:cSld>
-  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sld>`;
+  return zip.generateAsync({
+    type: "blob",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+    mimeType: "application/zip",
+  });
+}
+
+async function renderSlideImage(spec, slideNumber, palette, artwork) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1920;
+  canvas.height = 1080;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas is unavailable.");
+
+  const accent = slideNumber % 2 ? palette.primary : palette.accent;
+  drawSlideChrome(context, palette, accent);
+
+  if (spec.layout === "title") {
+    if (spec.image && artwork) {
+      drawImageCover(context, artwork, inches(6.35), inches(0.42), inches(6.45), inches(3.65));
+      drawCanvasRect(context, 6.1, 0.42, 0.15, 3.65, accent, 0.65);
+    } else {
+      drawCanvasRect(context, 6.35, 0.62, 5.9, 3.25, palette.panel, 0.78);
+    }
+    drawSlideText(context, spec.kicker, 0.88, 0.72, 3.05, 0.42, 18, palette.primary, true);
+    drawSlideText(context, spec.title, 0.72, 1.18, 5.55, 1.78, 42, "FFFFFF", true);
+    drawSlideText(context, spec.subtitle || "", 0.72, 3.08, 5.55, 0.58, 22, palette.gold, true);
+    drawSlideText(context, spec.body, 0.72, 4.1, 5.85, 0.68, 20, "9FC7FF", true);
+    drawSlideText(context, "Teen Fusion Youth Curriculum", 0.72, 6.25, 4.4, 0.36, 15, "D7DCEB");
+  } else if (spec.layout === "statement") {
+    drawSlideText(context, spec.title, 0.88, 0.78, 11.65, 0.65, 34, palette.gold, true);
+    drawCanvasRect(context, 0.78, 1.7, 11.75, 3.55, palette.panel, 0.82);
+    drawSlideText(context, spec.body, 1.12, 2.05, 10.9, 2.5, 30, "FFFFFF", true);
+    drawSlideText(context, "Let this become the bridge into the Scripture, not a substitute for it.", 1.12, 5.65, 10.7, 0.46, 18, "D7DCEB");
+  } else if (spec.layout === "scripture") {
+    drawSlideText(context, spec.title, 0.88, 0.78, 11.65, 0.65, 34, palette.gold, true);
+    drawSlideText(context, spec.body.map((line) => `- ${line}`), 1.03, 1.85, 11.2, 2.25, 27, "9FC7FF", true);
+    drawCanvasRect(context, 0.92, 4.55, 11.45, 1.1, palette.panel, 0.78);
+    drawSlideText(context, spec.footer, 1.16, 4.86, 10.95, 0.5, 19, "FFFFFF");
+  } else if (spec.layout === "questions") {
+    drawSlideText(context, spec.title, 0.88, 0.78, 11.65, 0.65, 34, palette.gold, true);
+    drawSlideText(context, spec.body.map((question, index) => `${index + 1}. ${shorten(question, 118)}`), 0.95, 1.75, 11.35, 4.25, 24, "FFFFFF");
+  } else {
+    drawSlideText(context, spec.title, 0.88, 0.78, 11.65, 0.65, 34, palette.gold, true);
+    drawCanvasRect(context, 0.92, 1.65, 11.5, 4.12, palette.panel, 0.82);
+    drawSlideText(context, spec.body.map((line) => shorten(line, 230)), 1.2, 1.98, 10.9, 3.25, 19, "FFFFFF");
+    if (spec.footer) drawSlideText(context, spec.footer, 1.2, 5.98, 10.8, 0.42, 18, palette.gold, true);
+  }
+
+  drawSlideNumber(context, slideNumber, palette);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  if (!blob) throw new Error("Slide image export failed.");
+  return blob;
+}
+
+function drawSlideChrome(context, palette, accent) {
+  context.fillStyle = `#${stripHex(palette.background)}`;
+  context.fillRect(0, 0, 1920, 1080);
+
+  const gradient = context.createRadialGradient(1500, 210, 80, 1500, 210, 920);
+  gradient.addColorStop(0, hexToCss(palette.primary, 0.2));
+  gradient.addColorStop(1, hexToCss(palette.background, 0));
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 1920, 1080);
+
+  context.fillStyle = `#${stripHex(accent)}`;
+  context.fillRect(0, 0, 1920, 23);
+  context.fillStyle = hexToCss(accent, 0.42);
+  context.fillRect(inches(0.55), inches(6.94), inches(12.25), 6);
+}
+
+function drawSlideNumber(context, slideNumber, palette) {
+  const diameter = 66;
+  const x = 34;
+  const y = 34;
+  context.save();
+  context.beginPath();
+  context.arc(x + diameter / 2, y + diameter / 2, diameter / 2, 0, Math.PI * 2);
+  context.fillStyle = "rgba(5, 7, 18, 0.88)";
+  context.fill();
+  context.lineWidth = 3;
+  context.strokeStyle = `#${stripHex(palette.gold)}`;
+  context.stroke();
+  context.fillStyle = "#FFFFFF";
+  context.font = "700 30px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(slideNumber), x + diameter / 2, y + diameter / 2 + 1);
+  context.restore();
+}
+
+function drawCanvasRect(context, x, y, width, height, color, alpha = 1) {
+  context.fillStyle = hexToCss(color, alpha);
+  context.fillRect(inches(x), inches(y), inches(width), inches(height));
+}
+
+function drawSlideText(context, content, x, y, width, height, fontSize, color, bold = false) {
+  const left = inches(x);
+  const top = inches(y);
+  const maxWidth = inches(width);
+  const maxHeight = inches(height);
+  const values = (Array.isArray(content) ? content : [content]).filter((line) => String(line || "").trim());
+  if (!values.length) return;
+
+  let size = fontSize;
+  let lines = [];
+  let lineHeight = 0;
+  do {
+    context.font = `${bold ? 700 : 500} ${inches(size / 96)}px Arial, sans-serif`;
+    lineHeight = Math.round(inches((size / 96) * 1.22));
+    lines = values.flatMap((value) => wrapCanvasText(context, String(value), maxWidth));
+    size -= 2;
+  } while (lines.length * lineHeight > maxHeight && size >= 14);
+
+  context.fillStyle = `#${stripHex(color)}`;
+  context.textAlign = "left";
+  context.textBaseline = "top";
+  lines.slice(0, Math.floor(maxHeight / lineHeight)).forEach((line, index) => {
+    context.fillText(line, left, top + index * lineHeight);
+  });
+}
+
+function wrapCanvasText(context, value, maxWidth) {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const test = line ? `${line} ${word}` : word;
+    if (context.measureText(test).width <= maxWidth || !line) {
+      line = test;
+      return;
+    }
+    lines.push(line);
+    line = word;
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+function drawImageCover(context, image, x, y, width, height) {
+  const imageRatio = image.width / image.height;
+  const targetRatio = width / height;
+  let sourceWidth = image.width;
+  let sourceHeight = image.height;
+  let sourceX = 0;
+  let sourceY = 0;
+
+  if (imageRatio > targetRatio) {
+    sourceWidth = image.height * targetRatio;
+    sourceX = (image.width - sourceWidth) / 2;
+  } else {
+    sourceHeight = image.width / targetRatio;
+    sourceY = (image.height - sourceHeight) / 2;
+  }
+
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+function hexToCss(color, alpha = 1) {
+  const hex = stripHex(color);
+  const normalized = hex.length === 3
+    ? hex.split("").map((char) => `${char}${char}`).join("")
+    : hex.padEnd(6, "0").slice(0, 6);
+  const red = parseInt(normalized.slice(0, 2), 16);
+  const green = parseInt(normalized.slice(2, 4), 16);
+  const blue = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function inches(value) {
+  return Math.round(value * 144);
 }
 
 function presentationPalette(lesson) {
