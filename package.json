@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.1",
+    "jszip": "^3.10.1",
     "vite": "^6.0.7"
   }
 }

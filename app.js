@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import JSZip from "jszip";
 
 const CURRICULUM_URL = "./assets/youth_curriculum_specification.md";
 const STORAGE_KEY = "teen-fusion-taught-weeks";
@@ -1478,9 +1479,7 @@ function matchesAny(text, terms) {
 async function downloadLessonPresentation(lesson) {
   const imageBytes = await renderLessonImageAsPng(lesson).catch(() => null);
   const files = buildPresentationFiles(lesson, imageBytes);
-  const blob = new Blob([createZip(files)], {
-    type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  });
+  const blob = await createPresentationBlob(files);
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = `${safeFilename(`Week ${lesson.week} ${lesson.title}`)}.pptx`;
@@ -1830,100 +1829,24 @@ function corePropsXml(lesson) {
 </cp:coreProperties>`;
 }
 
-function createZip(files) {
-  const encoder = new TextEncoder();
-  const localParts = [];
-  const centralParts = [];
-  let offset = 0;
-
+async function createPresentationBlob(files) {
+  const zip = new JSZip();
   files.forEach((file) => {
-    const pathBytes = encoder.encode(file.path);
-    const data = typeof file.data === "string" ? encoder.encode(file.data) : file.data;
-    const crc = crc32(data);
-    const localHeader = new Uint8Array(30 + pathBytes.length);
-    const localView = new DataView(localHeader.buffer);
-    localView.setUint32(0, 0x04034b50, true);
-    localView.setUint16(4, 20, true);
-    localView.setUint16(6, 0, true);
-    localView.setUint16(8, 0, true);
-    localView.setUint16(10, dosTime(), true);
-    localView.setUint16(12, dosDate(), true);
-    localView.setUint32(14, crc, true);
-    localView.setUint32(18, data.length, true);
-    localView.setUint32(22, data.length, true);
-    localView.setUint16(26, pathBytes.length, true);
-    localHeader.set(pathBytes, 30);
-    localParts.push(localHeader, data);
-
-    const centralHeader = new Uint8Array(46 + pathBytes.length);
-    const centralView = new DataView(centralHeader.buffer);
-    centralView.setUint32(0, 0x02014b50, true);
-    centralView.setUint16(4, 20, true);
-    centralView.setUint16(6, 20, true);
-    centralView.setUint16(8, 0, true);
-    centralView.setUint16(10, 0, true);
-    centralView.setUint16(12, dosTime(), true);
-    centralView.setUint16(14, dosDate(), true);
-    centralView.setUint32(16, crc, true);
-    centralView.setUint32(20, data.length, true);
-    centralView.setUint32(24, data.length, true);
-    centralView.setUint16(28, pathBytes.length, true);
-    centralView.setUint32(42, offset, true);
-    centralHeader.set(pathBytes, 46);
-    centralParts.push(centralHeader);
-    offset += localHeader.length + data.length;
+    zip.file(file.path, file.data);
   });
-
-  const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
-  const end = new Uint8Array(22);
-  const endView = new DataView(end.buffer);
-  endView.setUint32(0, 0x06054b50, true);
-  endView.setUint16(8, files.length, true);
-  endView.setUint16(10, files.length, true);
-  endView.setUint32(12, centralSize, true);
-  endView.setUint32(16, offset, true);
-  return concatBytes([...localParts, ...centralParts, end]);
-}
-
-function concatBytes(parts) {
-  const total = parts.reduce((sum, part) => sum + part.length, 0);
-  const output = new Uint8Array(total);
-  let cursor = 0;
-  parts.forEach((part) => {
-    output.set(part, cursor);
-    cursor += part.length;
+  const data = await zip.generateAsync({
+    type: "arraybuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   });
-  return output;
+  return new Blob([data], {
+    type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  });
 }
-
-function crc32(data) {
-  let crc = 0xffffffff;
-  for (const byte of data) {
-    crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-const crcTable = Array.from({ length: 256 }, (_, index) => {
-  let crc = index;
-  for (let bit = 0; bit < 8; bit += 1) {
-    crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
-  }
-  return crc >>> 0;
-});
 
 function emu(inches) {
   return Math.round(inches * 914400);
-}
-
-function dosTime() {
-  const now = new Date();
-  return (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
-}
-
-function dosDate() {
-  const now = new Date();
-  return ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
 }
 
 function stripHex(value) {
