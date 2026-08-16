@@ -3,6 +3,7 @@ import JSZip from "jszip";
 
 const CURRICULUM_URL = "./assets/youth_curriculum_specification.md";
 const STORAGE_KEY = "teen-fusion-taught-weeks";
+const GENERATED_TAUGHT_KEY = "teen-fusion-generated-taught-lessons";
 const SCHEDULE_START_KEY = "teen-fusion-schedule-start";
 const RESOURCES_STORAGE_KEY = "teen-fusion-resources";
 const NLT_VERSION = "NLT";
@@ -35,6 +36,7 @@ const state = {
   modules: [],
   lessons: [],
   taught: new Set(),
+  generatedTaught: new Set(),
   selectedWeek: 1,
   activeView: "dashboard",
   query: "",
@@ -114,6 +116,7 @@ async function init() {
   state.modules = parsed.modules;
   state.lessons = parsed.lessons;
   state.taught = loadTaught();
+  state.generatedTaught = loadGeneratedTaught();
   state.resources = loadResources();
   state.selectedResourceId = state.resources[0]?.id || "";
   state.scheduleStart = loadScheduleStart();
@@ -551,13 +554,13 @@ function render() {
   }
 
   const selected = getSelectedLesson();
-  const taughtCount = state.taught.size;
-  const progress = Math.round((taughtCount / state.lessons.length) * 100);
-  const upcoming = state.lessons.length - taughtCount;
+  const generatedTaughtCount = state.generatedTaught.size;
+  const progress = generatedTaughtCount ? 100 : 0;
+  const selectedCount = state.generatedLesson ? 1 : 0;
 
   app.innerHTML = `
     <div class="app-shell">
-      ${renderSidebar(taughtCount, upcoming, progress)}
+      ${renderSidebar(generatedTaughtCount, selectedCount, progress)}
       <main class="main">
         ${renderActivePage()}
       </main>
@@ -682,6 +685,7 @@ function renderTopicSuggestion(topic) {
 }
 
 function renderGeneratedLessonPreview(lesson) {
+  const taught = isGeneratedLessonTaught(lesson);
   return `
     <section class="generated-preview" style="--primary: ${lesson.primary}; --accent: ${lesson.accent}">
       <div class="generated-preview-head">
@@ -691,6 +695,9 @@ function renderGeneratedLessonPreview(lesson) {
           ${renderScriptureLinks(lesson.scripture, "scripture")}
         </div>
         <div class="generated-actions">
+          <button class="${taught ? "primary-button" : "ghost-button"}" data-action="toggle-generated-taught" data-lesson-id="${escapeHtml(lesson.id)}">
+            ${icons.check} ${taught ? "Taught" : "Mark as Taught"}
+          </button>
           <button class="ghost-button" data-action="save-generated-lesson">${icons.folder} Save to Resources</button>
           <button class="ghost-button" data-action="download-generated-slides">${icons.download} Download Slide Images</button>
         </div>
@@ -1253,7 +1260,7 @@ function renderAccountDetail() {
   `;
 }
 
-function renderSidebar(taughtCount, upcoming, progress) {
+function renderSidebar(taughtCount, selectedCount, progress) {
   return `
     <aside class="sidebar">
       <div class="brand-card">
@@ -1274,22 +1281,20 @@ function renderSidebar(taughtCount, upcoming, progress) {
       </ul>
 
       <section class="progress-block">
-        <h2>Curriculum Progress</h2>
+        <h2>Lesson Progress</h2>
         <div class="progress-orb" style="--progress: ${progress}">
           <div class="progress-orb-inner">
             <div>
               <strong>${taughtCount}</strong>
-              <span>of ${state.lessons.length}<br />Weeks Taught</span>
+              <span>${taughtCount === 1 ? "Lesson" : "Lessons"}<br />Taught</span>
             </div>
           </div>
         </div>
         <div class="progress-legend">
           <div class="legend-row"><span><i class="dot" style="--dot: var(--gold)"></i>Taught</span><strong>${taughtCount}</strong></div>
-          <div class="legend-row"><span><i class="dot" style="--dot: var(--blue)"></i>Selected</span><strong>1</strong></div>
-          <div class="legend-row"><span><i class="dot" style="--dot: #f2f2f2"></i>Available</span><strong>${upcoming}</strong></div>
-          <div class="legend-row"><span><i class="dot" style="--dot: #6f788d"></i>Total</span><strong>${state.lessons.length}</strong></div>
+          <div class="legend-row"><span><i class="dot" style="--dot: var(--blue)"></i>Selected</span><strong>${selectedCount}</strong></div>
+          <div class="legend-row"><span><i class="dot" style="--dot: #6f788d"></i>Total</span><strong>${taughtCount}</strong></div>
         </div>
-        <button class="sidebar-action" data-action="reset-progress">${icons.calendar} Reset Progress</button>
       </section>
 
       <section class="modules-block">
@@ -1470,6 +1475,8 @@ function renderGeneratorDetail() {
     `;
   }
 
+  const taught = isGeneratedLessonTaught(lesson);
+
   return `
     <aside class="detail-panel generator-detail ${state.detailOpen ? "open" : ""}" aria-label="Generated lesson details">
       <button class="detail-close" data-action="close-detail" aria-label="Close details">${icons.x}</button>
@@ -1512,6 +1519,9 @@ function renderGeneratorDetail() {
       ${detailSection("book", "Slide Image Direction", lesson.assetPrompt)}
 
       <div class="detail-actions">
+        <button class="${taught ? "primary-button" : "ghost-button"}" data-action="toggle-generated-taught" data-lesson-id="${escapeHtml(lesson.id)}">
+          ${icons.check} ${taught ? "Taught" : "Mark as Taught"}
+        </button>
         <button class="ghost-button" data-action="save-generated-lesson">${icons.folder} Save to Resources</button>
         <button class="primary-button" data-action="download-generated-slides">${icons.download} Download Slide Images</button>
       </div>
@@ -2446,6 +2456,14 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-action='toggle-generated-taught']").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!state.generatedLesson) return;
+      toggleGeneratedLessonTaught(state.generatedLesson);
+      render();
+    });
+  });
+
   document.querySelector(".app-shell")?.addEventListener("click", (event) => {
     const calendarLesson = event.target.closest("[data-action='open-calendar-lesson']");
     if (!calendarLesson) return;
@@ -2528,15 +2546,6 @@ function bindEvents() {
         button.innerHTML = originalLabel;
       }
     });
-  });
-
-  document.querySelector("[data-action='reset-progress']")?.addEventListener("click", () => {
-    if (!state.taught.size || confirm("Reset all taught lessons?")) {
-      state.taught.clear();
-      saveTaught();
-      state.selectedWeek = 1;
-      render();
-    }
   });
 
   document.querySelectorAll("[data-action='set-view']").forEach((button) => {
@@ -2975,6 +2984,32 @@ function loadTaught() {
 
 function saveTaught() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...state.taught].sort((a, b) => a - b)));
+}
+
+function loadGeneratedTaught() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(GENERATED_TAUGHT_KEY) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveGeneratedTaught() {
+  localStorage.setItem(GENERATED_TAUGHT_KEY, JSON.stringify([...state.generatedTaught].sort()));
+}
+
+function isGeneratedLessonTaught(lesson) {
+  return Boolean(lesson?.id && state.generatedTaught.has(lesson.id));
+}
+
+function toggleGeneratedLessonTaught(lesson) {
+  if (!lesson?.id) return;
+  if (state.generatedTaught.has(lesson.id)) {
+    state.generatedTaught.delete(lesson.id);
+  } else {
+    state.generatedTaught.add(lesson.id);
+  }
+  saveGeneratedTaught();
 }
 
 function loadResources() {
