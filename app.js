@@ -2395,6 +2395,11 @@ function renderEmptyState() {
 
 function bindEvents() {
   document.querySelector("#lesson-generator-form")?.addEventListener("submit", handleGenerateLesson);
+  document.querySelector("#generator-topic")?.addEventListener("input", (event) => {
+    state.generatorTopic = event.target.value;
+    state.generatorError = "";
+    state.generatorNotice = "";
+  });
 
   document.querySelectorAll("[data-action='use-topic-suggestion']").forEach((button) => {
     button.addEventListener("click", () => {
