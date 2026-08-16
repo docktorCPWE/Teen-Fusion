@@ -1276,7 +1276,7 @@ function renderSidebar(taughtCount, selectedCount, progress) {
         ${navItem("book", "Curriculum", "dashboard")}
         ${navItem("calendar", "Calendar", "calendar", state.activeView === "calendar")}
         ${navItem("users", "My Group", "group", state.activeView === "group")}
-        ${navItem("folder", "Resources", "resources", state.activeView === "resources")}
+        ${navItem("folder", "Resources", "resources", state.activeView === "resources", state.resources.length)}
         ${navItem("gear", "Settings", "settings", state.activeView === "settings")}
       </ul>
 
@@ -1307,12 +1307,13 @@ function renderSidebar(taughtCount, selectedCount, progress) {
   `;
 }
 
-function navItem(icon, label, view = "", active = false) {
+function navItem(icon, label, view = "", active = false, count = null) {
   return `
     <li>
       <button class="nav-item ${active ? "active" : ""}" type="button" ${view ? `data-action="set-view-page" data-view="${view}"` : ""}>
         <span class="nav-icon">${icons[icon]}</span>
-        <span>${label}</span>
+        <span class="nav-label">${label}</span>
+        ${Number.isFinite(count) ? `<span class="nav-badge" aria-label="${count} saved ${count === 1 ? "resource" : "resources"}">${count}</span>` : ""}
       </button>
     </li>
   `;

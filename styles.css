@@ -240,6 +240,26 @@ button {
   text-align: left;
 }
 
+.nav-label {
+  min-width: 0;
+  flex: 1;
+}
+
+.nav-badge {
+  display: inline-grid;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  place-items: center;
+  border: 1px solid rgba(255, 183, 42, 0.38);
+  border-radius: 999px;
+  background: rgba(255, 183, 42, 0.12);
+  color: var(--gold-2);
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .nav-item.active {
   border-color: rgba(255, 173, 41, 0.2);
   background: linear-gradient(90deg, rgba(180, 92, 18, 0.36), rgba(255, 183, 42, 0.08));
