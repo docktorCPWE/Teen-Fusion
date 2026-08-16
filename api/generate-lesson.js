@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 
-const DEFAULT_MODEL = process.env.AI_GATEWAY_MODEL || "openai/gpt-5.6-sol";
+const DEFAULT_MODEL = process.env.AI_GATEWAY_MODEL || "openai/gpt-5-nano";
+const BACKUP_MODELS = ["openai/gpt-5-mini", "openai/gpt-5"];
 
 export default async function handler(request, response) {
   if (request.method !== "POST") {
@@ -17,18 +18,9 @@ export default async function handler(request, response) {
     }
 
     try {
-      const { text } = await generateText({
-        model: DEFAULT_MODEL,
-        system: [
-          "You create biblically faithful, pastorally sensitive Christian youth lessons for teen ministry leaders.",
-          "Never include private student information. Keep the tone warm, practical, and age-appropriate for today's Christian teens.",
-          "Return only valid JSON. Do not wrap it in markdown.",
-        ].join(" "),
-        prompt: buildPrompt(cleanTopic),
-      });
-
-      const lesson = normalizeLesson(JSON.parse(extractJson(text)), cleanTopic);
-      return response.status(200).json({ lesson, source: "ai", model: DEFAULT_MODEL });
+      const generated = await generateLessonWithGateway(cleanTopic);
+      const lesson = normalizeLesson(JSON.parse(extractJson(generated.text)), cleanTopic);
+      return response.status(200).json({ lesson, source: "ai", model: generated.model });
     } catch (error) {
       console.warn("AI lesson generation unavailable:", cleanErrorMessage(error));
       return response.status(200).json({
@@ -41,6 +33,33 @@ export default async function handler(request, response) {
     console.error("Lesson generation request failed:", error);
     return response.status(500).json({ error: "The lesson could not be generated." });
   }
+}
+
+async function generateLessonWithGateway(topic) {
+  const models = [DEFAULT_MODEL, ...BACKUP_MODELS].filter(
+    (model, index, list) => model && list.indexOf(model) === index,
+  );
+  const errors = [];
+
+  for (const model of models) {
+    try {
+      const { text } = await generateText({
+        model,
+        system: [
+          "You create biblically faithful, pastorally sensitive Christian youth lessons for teen ministry leaders.",
+          "Never include private student information. Keep the tone warm, practical, and age-appropriate for today's Christian teens.",
+          "Return only valid JSON. Do not wrap it in markdown.",
+        ].join(" "),
+        prompt: buildPrompt(topic),
+      });
+
+      return { text, model };
+    } catch (error) {
+      errors.push(`${model}: ${cleanErrorMessage(error)}`);
+    }
+  }
+
+  throw new Error(errors.join(" | "));
 }
 
 function cleanErrorMessage(error) {
