@@ -6,6 +6,20 @@ const STORAGE_KEY = "teen-fusion-taught-weeks";
 const SCHEDULE_START_KEY = "teen-fusion-schedule-start";
 const RESOURCES_STORAGE_KEY = "teen-fusion-resources";
 const NLT_VERSION = "NLT";
+const TOPIC_SUGGESTIONS = [
+  "anxiety and peace",
+  "online identity",
+  "friend drama and forgiveness",
+  "doubt and faith",
+  "dating boundaries",
+  "pressure to fit in",
+  "grief and hope",
+  "purpose and calling",
+  "social media comparison",
+  "anger and self-control",
+  "loneliness and belonging",
+  "temptation and wisdom",
+];
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://typvwcjirkbhpnlaljdz.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_c9fnlAUuIsyfjasaoN7fCA_G71EmXO_";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
@@ -46,6 +60,12 @@ const state = {
   user: null,
   member: null,
   members: [],
+  generatorTopic: "",
+  generatorSuggestions: [],
+  generatorLoading: false,
+  generatorError: "",
+  generatorNotice: "",
+  generatedLesson: null,
 };
 
 const icons = {
@@ -99,6 +119,7 @@ async function init() {
   state.scheduleStart = loadScheduleStart();
   state.calendarCursor = monthKey(parseLocalDate(state.scheduleStart));
   state.selectedWeek = firstUntaughtWeek() || 1;
+  state.generatorSuggestions = randomTopicSuggestions();
   await initializeAuth();
   applyHashSelection();
   window.addEventListener("hashchange", () => {
@@ -560,6 +581,7 @@ function renderSideDetail(selectedLesson) {
   if (state.activeView === "group") return renderStudentDetail();
   if (state.activeView === "resources") return renderResourceDetail();
   if (state.activeView === "settings") return renderAccountDetail();
+  if (state.activeView === "dashboard") return renderGeneratorDetail();
   return renderDetail(selectedLesson);
 }
 
@@ -617,21 +639,86 @@ function renderAuthGate() {
 }
 
 function renderDashboardPage() {
-  const selected = getSelectedLesson();
-  const filtered = filteredLessons();
   return `
-    ${renderTopbar()}
-    ${renderFeatured(selected)}
-    <section>
+    <header class="generator-hero">
+      <div class="generator-copy">
+        <h1>Build This Week's Lesson</h1>
+        <p>Type a single keyword or a full topic phrase. Teen Fusion will shape it into a class outline with teacher notes, talking points, discussion questions, Scripture direction, and downloadable Proclaim-ready slide images.</p>
+      </div>
+      <form class="generator-form" id="lesson-generator-form">
+        <label for="generator-topic">Topic or phrase</label>
+        <div class="generator-input-row">
+          <textarea id="generator-topic" name="topic" rows="3" placeholder="Try anxiety, online identity, grief and hope, dating boundaries..." ${state.generatorLoading ? "disabled" : ""}>${escapeHtml(state.generatorTopic)}</textarea>
+          <button class="primary-button" type="submit" ${state.generatorLoading ? "disabled" : ""}>
+            ${icons.light} ${state.generatorLoading ? "Generating..." : "Generate Lesson"}
+          </button>
+        </div>
+        <p class="generator-hint">Keep this topic-only. Do not enter private student names, medical details, or sensitive roster information.</p>
+      </form>
+    </header>
+
+    <section class="topic-suggestions" aria-label="Suggested topics">
       <div class="content-head">
-        <h2>${filtered.length} Lessons</h2>
-        <div class="view-switch" aria-label="View mode">
-          <button class="icon-button ${state.view === "grid" ? "active" : ""}" data-action="set-view" data-view="grid" aria-label="Grid view">${icons.grid}</button>
-          <button class="icon-button ${state.view === "compact" ? "active" : ""}" data-action="set-view" data-view="compact" aria-label="Compact view">${icons.list}</button>
+        <h2>Topic Starters</h2>
+        <button class="small-button" data-action="refresh-topic-suggestions">Refresh Topics</button>
+      </div>
+      <div class="topic-chip-grid">
+        ${state.generatorSuggestions.map(renderTopicSuggestion).join("")}
+      </div>
+    </section>
+
+    ${state.generatorError ? `<p class="form-error">${escapeHtml(state.generatorError)}</p>` : ""}
+    ${state.generatorNotice ? `<p class="form-notice">${escapeHtml(state.generatorNotice)}</p>` : ""}
+    ${state.generatedLesson ? renderGeneratedLessonPreview(state.generatedLesson) : renderGeneratorEmptyState()}
+  `;
+}
+
+function renderTopicSuggestion(topic) {
+  return `
+    <button class="topic-chip" data-action="use-topic-suggestion" data-topic="${escapeHtml(topic)}">
+      <span>${escapeHtml(topic)}</span>
+    </button>
+  `;
+}
+
+function renderGeneratedLessonPreview(lesson) {
+  return `
+    <section class="generated-preview" style="--primary: ${lesson.primary}; --accent: ${lesson.accent}">
+      <div class="generated-preview-head">
+        <div>
+          <span class="section-label">Generated Lesson</span>
+          <h2>${escapeHtml(lesson.title)}</h2>
+          ${renderScriptureLinks(lesson.scripture, "scripture")}
+        </div>
+        <div class="generated-actions">
+          <button class="ghost-button" data-action="save-generated-lesson">${icons.folder} Save to Resources</button>
+          <button class="ghost-button" data-action="download-generated-slides">${icons.download} Download Slide Images</button>
         </div>
       </div>
-      <div class="lesson-grid ${state.view === "compact" ? "compact" : ""}">
-        ${filtered.length ? filtered.map(renderLessonCard).join("") : renderEmptyState()}
+      <p class="tagline">${escapeHtml(lesson.tagline)}</p>
+      <div class="generated-grid">
+        <article>
+          <h3>Big Idea</h3>
+          <p>${escapeHtml(lesson.bigIdea)}</p>
+        </article>
+        <article>
+          <h3>Creative Hook</h3>
+          <p>${escapeHtml(lesson.hook)}</p>
+        </article>
+      </div>
+      <div class="talking-point-list">
+        ${lesson.talkingPoints.slice(0, 4).map((point) => `<span>${escapeHtml(point)}</span>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderGeneratorEmptyState() {
+  return `
+    <section class="generator-empty">
+      <div>
+        <h2>No generated lesson yet.</h2>
+        <p>Pick a starter or type what your students need to process this week. The generated outline will appear here and in the right-hand lesson panel.</p>
       </div>
     </section>
   `;
@@ -1178,7 +1265,7 @@ function renderSidebar(taughtCount, upcoming, progress) {
       </div>
 
       <ul class="nav-list">
-        ${navItem("home", "Dashboard", "dashboard", state.activeView === "dashboard")}
+        ${navItem("home", "Generator", "dashboard", state.activeView === "dashboard")}
         ${navItem("book", "Curriculum", "dashboard")}
         ${navItem("calendar", "Calendar", "calendar", state.activeView === "calendar")}
         ${navItem("users", "My Group", "group", state.activeView === "group")}
@@ -1357,6 +1444,81 @@ function renderDetail(lesson) {
   `;
 }
 
+function renderGeneratorDetail() {
+  const lesson = state.generatedLesson;
+  if (!lesson) {
+    return `
+      <aside class="detail-panel generator-detail" aria-label="Generated lesson details">
+        <div class="detail-header">
+          <span class="section-label">Lesson Builder</span>
+          <h2>Ready When You Are</h2>
+          <span class="tagline">The generated outline will land here after the teacher chooses a topic.</span>
+        </div>
+        <section class="detail-section">
+          <h3>${icons.light} What It Creates</h3>
+          <p>A complete class outline with Scripture direction, teacher notes, talking points, discussion questions, a response moment, and presentation-ready JPG slide images.</p>
+        </section>
+        <section class="detail-section">
+          <h3>${icons.notes} Good Topic Examples</h3>
+          <ol>
+            <li>Anxiety and peace</li>
+            <li>How to handle friend drama</li>
+            <li>Finding identity in Christ online and offline</li>
+          </ol>
+        </section>
+      </aside>
+    `;
+  }
+
+  return `
+    <aside class="detail-panel generator-detail ${state.detailOpen ? "open" : ""}" aria-label="Generated lesson details">
+      <button class="detail-close" data-action="close-detail" aria-label="Close details">${icons.x}</button>
+      <div class="detail-header">
+        <span class="section-label">Generated Lesson</span>
+        <h2>${escapeHtml(lesson.title)}</h2>
+        ${renderScriptureLinks(lesson.scripture, "scripture")}
+        <span class="tagline">${escapeHtml(lesson.tagline)}</span>
+      </div>
+
+      <section class="detail-section big-idea-section">
+        <h3>${icons.light} Big Idea</h3>
+        <p class="idea-statement">${escapeHtml(lesson.bigIdea)}</p>
+      </section>
+
+      <section class="detail-section">
+        <h3>${icons.notes} Teacher Notes</h3>
+        <div class="note-stack">
+          ${lesson.teacherNotes.map((note) => `<p>${escapeHtml(note)}</p>`).join("")}
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <h3>${icons.book} Talking Points</h3>
+        <ol>
+          ${lesson.talkingPoints.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
+        </ol>
+      </section>
+
+      ${detailSection("notes", "Creative Hook", lesson.hook)}
+
+      <section class="detail-section">
+        <h3>${icons.question} Discussion Questions</h3>
+        <ol>
+          ${lesson.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}
+        </ol>
+      </section>
+
+      ${detailSection("check", "Response Moment", lesson.responseMoment)}
+      ${detailSection("book", "Slide Image Direction", lesson.assetPrompt)}
+
+      <div class="detail-actions">
+        <button class="ghost-button" data-action="save-generated-lesson">${icons.folder} Save to Resources</button>
+        <button class="primary-button" data-action="download-generated-slides">${icons.download} Download Slide Images</button>
+      </div>
+    </aside>
+  `;
+}
+
 function renderBigIdeaSection(lesson) {
   const context = lessonContextParagraphs(lesson);
   return `
@@ -1515,13 +1677,21 @@ function loadImageFromBlob(blob) {
 function buildLessonSlideSpecs(lesson, hasImage) {
   const lens = lessonContextLens(lesson);
   const scriptures = splitScriptureReferences(lesson.scripture);
-  const contextSlides = [
+  const teacherNotes = Array.isArray(lesson.teacherNotes) && lesson.teacherNotes.length
+    ? lesson.teacherNotes.slice(0, 3)
+    : [
     `Students are carrying this pressure: ${lens.pressure}.`,
     lens.pastoralGoal,
     "Ask what this topic reveals about trust, identity, fear, desire, community, or obedience.",
   ];
+  const talkingPoints = Array.isArray(lesson.talkingPoints) && lesson.talkingPoints.length
+    ? lesson.talkingPoints.slice(0, 5)
+    : [
+      "Listen for what God reveals about Himself and what He says is true about us.",
+      `This week, practice ${lens.response}.`,
+    ];
   const responseSlides = [
-    "Listen for what God reveals about Himself and what He says is true about us.",
+    lesson.responseMoment || "Choose one small, honest next step before you leave.",
     `This week, practice ${lens.response}.`,
   ];
   const slideSpecs = [
@@ -1539,8 +1709,8 @@ function buildLessonSlideSpecs(lesson, hasImage) {
       layout: "statement",
     },
     {
-      title: "The pressure students feel",
-      body: contextSlides,
+      title: "Teacher notes",
+      body: teacherNotes,
       layout: "context",
     },
     {
@@ -1550,6 +1720,11 @@ function buildLessonSlideSpecs(lesson, hasImage) {
         : ["Scripture references are listed in the lesson notes."],
       footer: "Read for what God reveals about Himself and what He says is true about us.",
       layout: "scripture",
+    },
+    {
+      title: "Talking points",
+      body: talkingPoints,
+      layout: "context",
     },
     {
       title: "Start the conversation",
@@ -1607,6 +1782,7 @@ async function renderSlideImage(spec, slideNumber, palette, artwork) {
       drawCanvasRect(context, 6.1, 0.42, 0.15, 3.65, accent, 0.65);
     } else {
       drawCanvasRect(context, 6.35, 0.62, 5.9, 3.25, palette.panel, 0.78);
+      drawGeneratedArtwork(context, 6.35, 0.62, 5.9, 3.25, palette, accent);
     }
     drawSlideText(context, spec.kicker, 0.88, 0.72, 3.05, 0.42, 18, palette.primary, true);
     drawSlideText(context, spec.title, 0.72, 1.18, 5.55, 1.78, 42, "FFFFFF", true);
@@ -1678,6 +1854,56 @@ function drawSlideNumber(context, slideNumber, palette) {
 function drawCanvasRect(context, x, y, width, height, color, alpha = 1) {
   context.fillStyle = hexToCss(color, alpha);
   context.fillRect(inches(x), inches(y), inches(width), inches(height));
+}
+
+function drawGeneratedArtwork(context, x, y, width, height, palette, accent) {
+  const left = inches(x);
+  const top = inches(y);
+  const boxWidth = inches(width);
+  const boxHeight = inches(height);
+  const centerX = left + boxWidth / 2;
+  const centerY = top + boxHeight / 2;
+  const radius = Math.min(boxWidth, boxHeight) * 0.34;
+
+  const glow = context.createRadialGradient(centerX, centerY, 20, centerX, centerY, radius * 1.8);
+  glow.addColorStop(0, hexToCss(palette.gold, 0.42));
+  glow.addColorStop(0.45, hexToCss(accent, 0.26));
+  glow.addColorStop(1, hexToCss(palette.background, 0));
+  context.fillStyle = glow;
+  context.fillRect(left, top, boxWidth, boxHeight);
+
+  context.save();
+  context.translate(centerX, centerY);
+  context.strokeStyle = `#${stripHex(palette.gold)}`;
+  context.lineWidth = 9;
+  context.shadowColor = hexToCss(palette.gold, 0.7);
+  context.shadowBlur = 26;
+  context.beginPath();
+  context.arc(0, -8, radius, Math.PI * 0.12, Math.PI * 1.88);
+  context.stroke();
+
+  context.shadowBlur = 18;
+  context.strokeStyle = `#${stripHex(accent)}`;
+  context.lineWidth = 7;
+  context.beginPath();
+  context.moveTo(-radius * 0.12, -radius * 0.62);
+  context.lineTo(-radius * 0.12, radius * 0.5);
+  context.moveTo(-radius * 0.46, -radius * 0.16);
+  context.lineTo(radius * 0.22, -radius * 0.16);
+  context.stroke();
+
+  context.shadowBlur = 0;
+  context.fillStyle = hexToCss(palette.gold, 0.88);
+  context.beginPath();
+  context.moveTo(-radius * 0.95, radius * 0.62);
+  context.quadraticCurveTo(-radius * 0.32, radius * 0.42, 0, radius * 0.72);
+  context.quadraticCurveTo(radius * 0.32, radius * 0.42, radius * 0.95, radius * 0.62);
+  context.lineTo(radius * 0.78, radius * 0.82);
+  context.quadraticCurveTo(radius * 0.24, radius * 0.68, 0, radius * 0.92);
+  context.quadraticCurveTo(-radius * 0.24, radius * 0.68, -radius * 0.78, radius * 0.82);
+  context.closePath();
+  context.fill();
+  context.restore();
 }
 
 function drawSlideText(context, content, x, y, width, height, fontSize, color, bold = false) {
@@ -1977,11 +2203,244 @@ function renderScriptureLinks(scripture, className) {
   `;
 }
 
+async function handleGenerateLesson(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const topic = String(new FormData(form).get("topic") || "").trim();
+  if (!topic) {
+    state.generatorError = "Type a topic or choose one of the starter topics first.";
+    render();
+    return;
+  }
+
+  state.generatorTopic = topic;
+  state.generatorLoading = true;
+  state.generatorError = "";
+  state.generatorNotice = "";
+  render();
+
+  try {
+    const response = await fetch("/api/generate-lesson", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic }),
+    });
+
+    if (!response.ok) throw new Error("The generator endpoint did not respond.");
+    const payload = await response.json();
+    state.generatedLesson = normalizeGeneratedLesson(payload.lesson, topic, payload.source);
+    state.generatorError = payload.source === "fallback"
+      ? "AI generation was not available, so Teen Fusion created a structured starter lesson you can still use."
+      : "";
+  } catch (error) {
+    console.warn("Using local generated lesson fallback:", error);
+    state.generatedLesson = normalizeGeneratedLesson(createFallbackGeneratedLesson(topic), topic, "local");
+    state.generatorError = "The AI endpoint was not reachable from this environment, so a local starter lesson was created.";
+  } finally {
+    state.generatorLoading = false;
+    state.detailOpen = true;
+    render();
+  }
+}
+
+function normalizeGeneratedLesson(raw = {}, topic = "student faith", source = "ai") {
+  const title = clampText(raw.title, titleCase(topic), 72);
+  const scripture = clampText(raw.scripture, "Psalm 139:13-16; Romans 12:2", 160);
+  const lesson = {
+    id: `generated-${Date.now()}`,
+    week: "Custom",
+    title,
+    tagline: clampText(raw.tagline, "Faith that meets real life.", 130),
+    bigIdea: clampText(raw.bigIdea, `God's truth gives students a better way to understand ${topic}.`, 220),
+    scripture,
+    hook: clampText(raw.creativeHook || raw.hook, `Ask students to name one word they associate with ${topic}, then talk about what those words reveal.`, 420),
+    questions: normalizeTextList(raw.discussionQuestions || raw.questions, [
+      `Where do you see ${topic} showing up in everyday teen life?`,
+      "What makes this hard to talk about honestly?",
+      "What does Scripture reveal about God's heart in this area?",
+      "What lie does this topic tempt students to believe?",
+      "What is one wise next step this week?",
+    ], 7, 220),
+    teacherNotes: normalizeTextList(raw.teacherNotes, [
+      `Start by naming why ${topic} matters in real teen life, then connect the room to Scripture before moving into advice.`,
+      "Give students space to answer honestly without forcing vulnerability.",
+      "Keep bringing the conversation back to who God is, what He says is true, and what one faithful next step could look like.",
+    ], 5, 420),
+    talkingPoints: normalizeTextList(raw.talkingPoints, [
+      "God cares about the hidden parts of our lives, not just our church answers.",
+      "The gospel gives students a stable identity before it gives them a to-do list.",
+      "Wisdom is usually practiced in small choices before it is seen in big moments.",
+      "Christian community helps students remember truth when pressure gets loud.",
+    ], 6, 220),
+    responseMoment: clampText(raw.responseMoment, "Invite students to name one pressure they want to surrender to God, then pray for courage to take one obedient next step this week.", 420),
+    assetPrompt: clampText(raw.imagePrompt || raw.assetPrompt, `Teen Fusion slide art about ${topic}, cinematic dark background, gold light, blue accent glow, hopeful Christian tone, clean space for readable text`, 360),
+    slideTitles: normalizeTextList(raw.slideTitles, [title, "Big Idea", "Open the Scriptures", "Talking Points", "Questions for the Room", "Response Moment"], 8, 80),
+    moduleTitle: "Generated Topic",
+    moduleFocus: "A teacher-created lesson generated from the topic entered for this week.",
+    primary: topicPalette(topic).primary,
+    accent: topicPalette(topic).accent,
+    source,
+  };
+
+  return lesson;
+}
+
+function createFallbackGeneratedLesson(topic) {
+  return {
+    title: titleCase(topic),
+    tagline: "A practical conversation for faith that meets real life.",
+    bigIdea: `Jesus gives students a truer way to understand ${topic}, and He invites them to respond with trust instead of pressure.`,
+    scripture: "Psalm 139:13-16; Romans 12:2; Philippians 4:6-7",
+    teacherNotes: [
+      `Begin by asking where students see ${topic} showing up in normal life: school, home, friendships, online spaces, private thoughts, or future plans.`,
+      "Do not rush to fix every answer. Let students name the tension, then use Scripture to show that God speaks with both truth and compassion.",
+      "Close by helping each student choose one small next step that can be practiced this week.",
+    ],
+    talkingPoints: [
+      "Pressure gets louder when students believe they have to solve life alone.",
+      "Scripture gives students a steady center when culture, feelings, and peer voices keep shifting.",
+      "God's truth is not meant to shame students; it is meant to lead them into freedom and wisdom.",
+      "A faithful next step can be small and still matter.",
+    ],
+    creativeHook: `Invite students to write one anonymous sentence that begins, "When I think about ${topic}, I feel..." Read a few aloud and look for common pressure points before opening Scripture.`,
+    discussionQuestions: [
+      `What makes ${topic} difficult for students your age?`,
+      "What messages do social media, friends, or culture send about this?",
+      "What does Scripture say that feels comforting, challenging, or surprising?",
+      "What would wisdom look like in a real situation this week?",
+      "Who is one trusted person you can talk to when this gets heavy?",
+    ],
+    responseMoment: "Give students one quiet minute to pray honestly, then invite them to write one next step they can take before the next group gathering.",
+    imagePrompt: `Teen Fusion slide art about ${topic}, chrome gold and purple visual energy, open Bible symbolism, dramatic but hopeful lighting, dark background, clean space for readable slide text`,
+  };
+}
+
+function randomTopicSuggestions() {
+  return [...TOPIC_SUGGESTIONS]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 4);
+}
+
+function normalizeTextList(value, fallback, maxItems, maxLength) {
+  const list = Array.isArray(value) ? value : [];
+  const cleaned = list
+    .map((item) => clampText(item, "", maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+  return cleaned.length ? cleaned : fallback;
+}
+
+function clampText(value, fallback, maxLength) {
+  const text = String(value || fallback || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}…`;
+}
+
+function titleCase(value) {
+  return String(value || "Student Faith")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(" ");
+}
+
+function topicPalette(topic) {
+  const text = String(topic || "").toLowerCase();
+  if (matchesAny(text, ["anxiety", "peace", "fear", "stress", "worry"])) return { primary: "#60a5fa", accent: "#22c55e" };
+  if (matchesAny(text, ["identity", "online", "social", "comparison", "phone"])) return { primary: "#8b5cf6", accent: "#f4a51c" };
+  if (matchesAny(text, ["dating", "relationship", "friend", "forgive", "drama"])) return { primary: "#e331d4", accent: "#ffd36a" };
+  if (matchesAny(text, ["grief", "loss", "hope", "lonely", "loneliness"])) return { primary: "#4cc9f0", accent: "#f4a51c" };
+  return { primary: "#f4a51c", accent: "#2f76ff" };
+}
+
+function resourceFromGeneratedLesson(lesson) {
+  return {
+    id: crypto.randomUUID(),
+    title: lesson.title,
+    type: "Generated Lesson",
+    url: "",
+    notes: formatGeneratedLessonNotes(lesson),
+    tags: "AI lesson generator",
+    week: "",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function formatGeneratedLessonNotes(lesson) {
+  return [
+    `Big Idea: ${lesson.bigIdea}`,
+    "",
+    `Scripture: ${lesson.scripture}`,
+    "",
+    "Teacher Notes:",
+    ...lesson.teacherNotes.map((note) => `- ${note}`),
+    "",
+    "Talking Points:",
+    ...lesson.talkingPoints.map((point) => `- ${point}`),
+    "",
+    `Creative Hook: ${lesson.hook}`,
+    "",
+    "Discussion Questions:",
+    ...lesson.questions.map((question, index) => `${index + 1}. ${question}`),
+    "",
+    `Response Moment: ${lesson.responseMoment}`,
+    "",
+    `Slide Image Direction: ${lesson.assetPrompt}`,
+  ].join("\n");
+}
+
 function renderEmptyState() {
   return `<div class="empty-state">No lessons match the current filters.</div>`;
 }
 
 function bindEvents() {
+  document.querySelector("#lesson-generator-form")?.addEventListener("submit", handleGenerateLesson);
+
+  document.querySelectorAll("[data-action='use-topic-suggestion']").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.generatorTopic = button.dataset.topic || "";
+      state.generatorNotice = "";
+      render();
+      document.querySelector("#generator-topic")?.focus();
+    });
+  });
+
+  document.querySelector("[data-action='refresh-topic-suggestions']")?.addEventListener("click", () => {
+    state.generatorSuggestions = randomTopicSuggestions();
+    render();
+  });
+
+  document.querySelectorAll("[data-action='download-generated-slides']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!state.generatedLesson) return;
+      const originalLabel = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = `${icons.download} Building slides...`;
+      try {
+        await downloadLessonPresentation(state.generatedLesson);
+      } catch (error) {
+        console.error(error);
+        alert("The slide images could not be created. Please try again.");
+      } finally {
+        button.disabled = false;
+        button.innerHTML = originalLabel;
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-action='save-generated-lesson']").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!state.generatedLesson) return;
+      const resource = resourceFromGeneratedLesson(state.generatedLesson);
+      state.resources = [resource, ...state.resources];
+      state.selectedResourceId = resource.id;
+      saveResources();
+      state.generatorNotice = "Generated lesson saved to Resources.";
+      state.generatorError = "";
+      render();
+    });
+  });
+
   document.querySelector(".app-shell")?.addEventListener("click", (event) => {
     const calendarLesson = event.target.closest("[data-action='open-calendar-lesson']");
     if (!calendarLesson) return;
