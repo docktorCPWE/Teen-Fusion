@@ -1112,6 +1112,9 @@ function renderResourceDetail() {
   }
 
   const relatedLesson = lessonForResource(resource);
+  const generatedLessonId = generatedLessonIdForResource(resource);
+  const generatedTaught = generatedLessonId ? state.generatedTaught.has(generatedLessonId) : false;
+  const generatedLesson = generatedLessonForResource(resource);
   return `
     <aside class="detail-panel resource-detail-panel ${state.detailOpen ? "open" : ""}" aria-label="Resource details">
       <button class="detail-close" data-action="close-detail" aria-label="Close details">${icons.x}</button>
@@ -1126,10 +1129,16 @@ function renderResourceDetail() {
           <a class="primary-button resource-link-button" href="${escapeHtml(resource.url)}" target="_blank" rel="noopener noreferrer">${icons.folder} Open Link</a>
         </div>
       ` : ""}
-      ${resourceDetailSection("Notes", resource.notes || "No notes listed.")}
-      ${resourceDetailSection("Related Lesson", relatedLesson ? `Week ${relatedLesson.week}: ${relatedLesson.title}` : "No specific lesson selected.")}
+      ${generatedLesson ? renderResourceGeneratedLessonSections(generatedLesson) : resourceDetailSection("Notes", resource.notes || "No notes listed.")}
+      ${!generatedLesson ? resourceDetailSection("Related Lesson", relatedLesson ? `Week ${relatedLesson.week}: ${relatedLesson.title}` : "No specific lesson selected.") : ""}
       ${resourceDetailSection(resource.updatedAt ? "Updated" : "Saved", formatResourceDate(resource.updatedAt || resource.createdAt))}
       <div class="detail-actions">
+        ${generatedLessonId ? `
+          <button class="${generatedTaught ? "primary-button" : "ghost-button"}" data-action="toggle-resource-taught" data-generated-lesson-id="${escapeHtml(generatedLessonId)}">
+            ${icons.check} ${generatedTaught ? "Taught" : "Mark as Taught"}
+          </button>
+        ` : ""}
+        ${generatedLesson ? `<button class="primary-button" data-action="download-resource-slides" data-resource-id="${resource.id}">${icons.download} Download Slide Images</button>` : ""}
         <button class="ghost-button" data-action="edit-resource" data-resource-id="${resource.id}">Edit Resource</button>
         ${relatedLesson ? `<button class="ghost-button" data-action="open-resource-lesson" data-week="${relatedLesson.week}">Open Related Lesson</button>` : ""}
         <button class="ghost-button danger-action" data-action="delete-resource" data-resource-id="${resource.id}">Remove Resource</button>
@@ -1144,6 +1153,41 @@ function resourceDetailSection(label, value) {
       <h3>${label}</h3>
       <p>${escapeHtml(value)}</p>
     </section>
+  `;
+}
+
+function renderResourceGeneratedLessonSections(lesson) {
+  return `
+    <section class="detail-section big-idea-section">
+      <h3>${icons.light} Big Idea</h3>
+      <p class="idea-statement">${escapeHtml(lesson.bigIdea)}</p>
+    </section>
+
+    <section class="detail-section">
+      <h3>${icons.notes} Teacher Notes</h3>
+      <div class="note-stack">
+        ${lesson.teacherNotes.map((note) => `<p>${escapeHtml(note)}</p>`).join("")}
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h3>${icons.book} Talking Points</h3>
+      <ol>
+        ${lesson.talkingPoints.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
+      </ol>
+    </section>
+
+    ${detailSection("notes", "Creative Hook", lesson.hook)}
+
+    <section class="detail-section">
+      <h3>${icons.question} Discussion Questions</h3>
+      <ol>
+        ${lesson.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}
+      </ol>
+    </section>
+
+    ${detailSection("check", "Response Moment", lesson.responseMoment)}
+    ${detailSection("book", "Slide Image Direction", lesson.assetPrompt)}
   `;
 }
 
@@ -2373,6 +2417,14 @@ function resourceFromGeneratedLesson(lesson) {
     notes: formatGeneratedLessonNotes(lesson),
     tags: "AI lesson generator",
     week: "",
+    generatedLessonId: lesson.id,
+    generatedLesson: {
+      ...lesson,
+      teacherNotes: [...lesson.teacherNotes],
+      talkingPoints: [...lesson.talkingPoints],
+      questions: [...lesson.questions],
+      slideTitles: [...lesson.slideTitles],
+    },
     createdAt: new Date().toISOString(),
   };
 }
@@ -2453,6 +2505,7 @@ function bindEvents() {
       saveResources();
       state.generatorNotice = "Generated lesson saved to Resources.";
       state.generatorError = "";
+      if (window.matchMedia("(max-width: 880px)").matches) state.detailOpen = false;
       render();
     });
   });
@@ -2462,6 +2515,33 @@ function bindEvents() {
       if (!state.generatedLesson) return;
       toggleGeneratedLessonTaught(state.generatedLesson);
       render();
+    });
+  });
+
+  document.querySelectorAll("[data-action='toggle-resource-taught']").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleGeneratedLessonTaughtById(button.dataset.generatedLessonId);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-action='download-resource-slides']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const resource = state.resources.find((entry) => entry.id === button.dataset.resourceId);
+      const lesson = generatedLessonForResource(resource);
+      if (!lesson) return;
+      const originalLabel = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = `${icons.download} Building slides...`;
+      try {
+        await downloadLessonPresentation(lesson);
+      } catch (error) {
+        console.error(error);
+        alert("The slide images could not be created. Please try again.");
+      } finally {
+        button.disabled = false;
+        button.innerHTML = originalLabel;
+      }
     });
   });
 
@@ -3004,13 +3084,52 @@ function isGeneratedLessonTaught(lesson) {
 }
 
 function toggleGeneratedLessonTaught(lesson) {
-  if (!lesson?.id) return;
-  if (state.generatedTaught.has(lesson.id)) {
-    state.generatedTaught.delete(lesson.id);
+  toggleGeneratedLessonTaughtById(lesson?.id);
+}
+
+function toggleGeneratedLessonTaughtById(lessonId) {
+  if (!lessonId) return;
+  if (state.generatedTaught.has(lessonId)) {
+    state.generatedTaught.delete(lessonId);
   } else {
-    state.generatedTaught.add(lesson.id);
+    state.generatedTaught.add(lessonId);
   }
   saveGeneratedTaught();
+}
+
+function generatedLessonIdForResource(resource) {
+  if (resource?.generatedLessonId) return resource.generatedLessonId;
+  if (resource?.type === "Generated Lesson") return resource.id;
+  return "";
+}
+
+function generatedLessonForResource(resource) {
+  if (resource?.generatedLesson) {
+    return normalizeStoredGeneratedLesson(resource.generatedLesson, resource.title || "Generated Lesson");
+  }
+  return null;
+}
+
+function normalizeStoredGeneratedLesson(lesson, fallbackTitle) {
+  const title = clampText(lesson.title, fallbackTitle, 72);
+  return {
+    id: lesson.id || "",
+    title,
+    tagline: clampText(lesson.tagline, "Faith that meets real life.", 130),
+    bigIdea: clampText(lesson.bigIdea, "God's truth gives students a better way to understand real life.", 220),
+    scripture: clampText(lesson.scripture, "Psalm 139:13-16; Romans 12:2", 160),
+    hook: clampText(lesson.hook, "Use a simple opening question to help students enter the topic.", 420),
+    teacherNotes: normalizeTextList(lesson.teacherNotes, ["Use the teacher notes from the generated lesson."], 5, 420),
+    talkingPoints: normalizeTextList(lesson.talkingPoints, ["God's truth gives students a steady center."], 6, 220),
+    questions: normalizeTextList(lesson.questions, ["What stands out to you from this topic?"], 7, 220),
+    responseMoment: clampText(lesson.responseMoment, "Invite students to take one faithful next step this week.", 420),
+    assetPrompt: clampText(lesson.assetPrompt, `Teen Fusion slide art about ${title}`, 360),
+    slideTitles: normalizeTextList(lesson.slideTitles, [title, "Big Idea", "Scripture"], 8, 80),
+    moduleTitle: lesson.moduleTitle || "Generated Topic",
+    moduleFocus: lesson.moduleFocus || "A teacher-created lesson generated from a saved resource.",
+    primary: lesson.primary || topicPalette(title).primary,
+    accent: lesson.accent || topicPalette(title).accent,
+  };
 }
 
 function loadResources() {
